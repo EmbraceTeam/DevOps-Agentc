@@ -245,6 +245,8 @@ def resource_update(
             )
     except KeyError as e:
         _fail(str(e))
+    except ValueError as e:
+        _fail(str(e))
     if _JSON_FLAG["value"]:
         _emit_json(_masked_resource(updated, reveal=False))
     else:

@@ -38,6 +38,32 @@ def _list_types_args(_params: dict) -> list[str]:
     return ["resource", "types", "--json"]
 
 
+def _update_resource_args(params: dict) -> list[str]:
+    """构建 resource update 命令.
+
+    name 是位置参, 传什么直接覆盖. 未传的字段保持原值 (spec: 覆盖语义).
+    """
+    args = ["resource", "update", "--json", params["name"]]
+    if params.get("endpoint") is not None:
+        args += ["--endpoint", params["endpoint"]]
+    if params.get("port") is not None:
+        args += ["--port", str(params["port"])]
+    if params.get("status"):
+        args += ["--status", params["status"]]
+    if params.get("description") is not None:
+        args += ["--description", params["description"]]
+    for attr in params.get("attributes", []):
+        args += ["--attr", attr]
+    return args
+
+
+def _delete_resource_args(params: dict) -> list[str]:
+    args = ["resource", "delete", "--json", params["name"]]
+    if params.get("force"):
+        args.append("--force")
+    return args
+
+
 def _add_relation_args(params: dict) -> list[str]:
     args = [
         "relation",
@@ -84,8 +110,7 @@ PLUGIN_TOOLS: dict[str, dict] = {
                     "type": {
                         "type": "string",
                         "description": (
-                            "资源类型筛选: ecs/redis/postgres/mysql/"
-                            "hbase/aliyun_account/service 等"
+                            "资源类型筛选: ecs/redis/postgres/mysql/hbase/aliyun_account/service 等"
                         ),
                     }
                 },
@@ -120,8 +145,7 @@ PLUGIN_TOOLS: dict[str, dict] = {
         "schema": {
             "name": "ops_add_resource",
             "description": (
-                "登记一条新资源 (含连接凭据). "
-                "attributes 形如 ['host=1.2.3.4','ssh_user=root']."
+                "登记一条新资源 (含连接凭据). attributes 形如 ['host=1.2.3.4','ssh_user=root']."
             ),
             "parameters": {
                 "type": "object",
@@ -196,8 +220,7 @@ PLUGIN_TOOLS: dict[str, dict] = {
         "schema": {
             "name": "ops_concerns_due",
             "description": (
-                "查询时间窗口内到期的 open 关注点, 配合定时任务巡检. "
-                "within 格式如 7d/12h/30m."
+                "查询时间窗口内到期的 open 关注点, 配合定时任务巡检. within 格式如 7d/12h/30m."
             ),
             "parameters": {
                 "type": "object",
@@ -206,5 +229,48 @@ PLUGIN_TOOLS: dict[str, dict] = {
             },
         },
         "cli_args": _concerns_due_args,
+    },
+    "ops_update_resource": {
+        "schema": {
+            "name": "ops_update_resource",
+            "description": (
+                "更新资源的主表字段或属性. 覆盖语义: 传了的字段替换, 未传的保持原值. "
+                "更新成功后返回完整的最新资源 JSON."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "资源 id 或 name"},
+                    "endpoint": {"type": "string", "description": "新 endpoint, 传空字符串清除"},
+                    "port": {"type": "integer", "description": "新端口"},
+                    "status": {"type": "string", "description": "active/inactive/unknown"},
+                    "attributes": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "key[:type]=value, 传了的属性覆盖, 未传的不变",
+                    },
+                },
+                "required": ["name"],
+            },
+        },
+        "cli_args": _update_resource_args,
+    },
+    "ops_delete_resource": {
+        "schema": {
+            "name": "ops_delete_resource",
+            "description": "删除资源. 被关系引用时拒绝; 传 force=true 强制级联清理.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "资源 id 或 name"},
+                    "force": {
+                        "type": "boolean",
+                        "description": "强制级联删除被引用的资源",
+                    },
+                },
+                "required": ["name"],
+            },
+        },
+        "cli_args": _delete_resource_args,
     },
 }

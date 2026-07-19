@@ -221,3 +221,221 @@ def test_unknown_resource_returns_error(runner):
     res = runner.invoke(app, ["resource", "show", "--json", "ghost"])
     assert res.exit_code == 1
     assert "error" in json.loads(res.output)
+
+
+def test_resource_update_rejects_clearing_required_field(runner):
+    _add_ecs(runner, name="w1")
+    res = runner.invoke(app, ["resource", "update", "--json", "w1", "--attr", "host="])
+    assert res.exit_code == 1
+    assert "必填" in json.loads(res.output)["error"]
+
+
+def test_parse_attr_rejects_empty_key(runner):
+    res = runner.invoke(
+        app, ["resource", "add", "--json", "--type", "ecs", "--name", "bad", "--attr", "=value"]
+    )
+    assert res.exit_code == 2
+
+
+def test_parse_attr_rejects_invalid_vtype(runner):
+    res = runner.invoke(
+        app, ["resource", "add", "--json", "--type", "ecs", "--name", "bad", "--attr", "x:bogus=1"]
+    )
+    assert res.exit_code == 2
+
+
+def test_parse_attr_strips_value_whitespace(runner):
+    # value 前后空白应被 strip 再入库
+    res = runner.invoke(
+        app,
+        [
+            "resource",
+            "add",
+            "--json",
+            "--type",
+            "ecs",
+            "--name",
+            "spaced",
+            "--attr",
+            " host = 1.2.3.4 ",
+            "--attr",
+            "ssh_user = root ",
+        ],
+    )
+    assert res.exit_code == 0, res.output
+    out = json.loads(res.output)
+    host = next(a for a in out["attributes"] if a["key"] == "host")
+    assert host["value"] == "1.2.3.4"
+    user = next(a for a in out["attributes"] if a["key"] == "ssh_user")
+    assert user["value"] == "root"
+
+
+# ---------- relation CLI ----------
+
+
+def test_relation_list_json(runner):
+    _add_ecs(runner, name="web")
+    _add_ecs(runner, name="db")
+    runner.invoke(app, ["relation", "add", "--json", "--source", "web", "--target", "db"])
+    res = runner.invoke(app, ["relation", "list", "--json"])
+    assert res.exit_code == 0
+    data = json.loads(res.output)
+    assert len(data) == 1
+    assert data[0]["source"] != "" and data[0]["target"] != ""
+
+
+def test_relation_list_empty(runner):
+    # 空库应返回空 JSON 数组
+    res = runner.invoke(app, ["relation", "list", "--json"])
+    assert res.exit_code == 0
+    assert json.loads(res.output) == []
+
+
+def test_relation_list_filter_by_resource(runner):
+    _add_ecs(runner, name="web")
+    _add_ecs(runner, name="db")
+    _add_ecs(runner, name="cache")
+    runner.invoke(app, ["relation", "add", "--json", "--source", "web", "--target", "db"])
+    res = runner.invoke(app, ["relation", "list", "--json", "--resource", "web"])
+    assert res.exit_code == 0
+    data = json.loads(res.output)
+    assert len(data) >= 1
+
+
+def test_relation_graph_json(runner):
+    _add_ecs(runner, name="app")
+    _add_ecs(runner, name="pg")
+    runner.invoke(app, ["relation", "add", "--json", "--source", "app", "--target", "pg"])
+    res = runner.invoke(app, ["relation", "graph", "--json", "app"])
+    assert res.exit_code == 0
+    tree = json.loads(res.output)
+    assert tree["resource"]["name"] == "app"
+    assert len(tree["downstream"]) == 1
+
+
+def test_relation_graph_not_found(runner):
+    res = runner.invoke(app, ["relation", "graph", "--json", "ghost"])
+    assert res.exit_code == 1
+    assert "error" in json.loads(res.output)
+
+
+def test_relation_graph_human_format(runner):
+    _add_ecs(runner, name="app")
+    _add_ecs(runner, name="pg")
+    runner.invoke(app, ["relation", "add", "--json", "--source", "app", "--target", "pg"])
+    res = runner.invoke(app, ["relation", "graph", "app"])
+    assert res.exit_code == 0
+    assert "依赖" in res.output
+    assert "pg" in res.output
+
+
+def test_relation_add_duplicate_is_idempotent(runner):
+    _add_ecs(runner, name="a")
+    _add_ecs(runner, name="b")
+    r1 = runner.invoke(app, ["relation", "add", "--json", "--source", "a", "--target", "b"])
+    assert r1.exit_code == 0
+    r2 = runner.invoke(app, ["relation", "add", "--json", "--source", "a", "--target", "b"])
+    assert r2.exit_code == 0
+    # 幂等: 两次 add 都应成功, 不会报错
+    rl = runner.invoke(app, ["relation", "list", "--json"])
+    assert len(json.loads(rl.output)) == 1
+
+
+# ---------- concern CLI ----------
+
+
+def test_concern_list_json(runner):
+    _add_ecs(runner, name="w1")
+    runner.invoke(
+        app,
+        ["concern", "add", "--json", "--resource", "w1", "--category", "expiry", "--desc", "SSL"],
+    )
+    res = runner.invoke(app, ["concern", "list", "--json"])
+    assert res.exit_code == 0
+    data = json.loads(res.output)
+    assert len(data) == 1
+    assert data[0]["desc"] == "SSL"
+
+
+def test_concern_list_filter_by_resource(runner):
+    _add_ecs(runner, name="w1")
+    _add_ecs(runner, name="w2")
+    runner.invoke(
+        app,
+        ["concern", "add", "--json", "--resource", "w1", "--category", "x", "--desc", "w1-only"],
+    )
+    res = runner.invoke(app, ["concern", "list", "--json", "--resource", "w1"])
+    assert res.exit_code == 0
+    data = json.loads(res.output)
+    assert len(data) == 1
+    assert data[0]["desc"] == "w1-only"
+
+
+def test_concern_list_empty(runner):
+    res = runner.invoke(app, ["concern", "list", "--json"])
+    assert res.exit_code == 0
+    assert json.loads(res.output) == []
+
+
+def test_concern_due_empty(runner):
+    res = runner.invoke(app, ["concern", "due", "--json", "--within", "7d"])
+    assert res.exit_code == 0
+    assert json.loads(res.output) == []
+
+
+def test_concern_due_rejects_bad_within(runner):
+    res = runner.invoke(app, ["concern", "due", "--json", "--within", "7x"])
+    assert res.exit_code == 1
+
+
+def test_concern_due_rejects_negative_within(runner):
+    res = runner.invoke(app, ["concern", "due", "--json", "--within", "-3d"])
+    assert res.exit_code == 1
+
+
+def test_add_concern_with_all_options(runner):
+    _add_ecs(runner, name="w1")
+    res = runner.invoke(
+        app,
+        [
+            "concern",
+            "add",
+            "--json",
+            "--resource",
+            "w1",
+            "--category",
+            "capacity",
+            "--desc",
+            "磁盘80%",
+            "--due",
+            "2026-12-31T00:00:00+00:00",
+            "--severity",
+            "warning",
+        ],
+    )
+    assert res.exit_code == 0, res.output
+    out = json.loads(res.output)
+    assert out["category"] == "capacity"
+    assert out["severity"] == "warning"
+
+
+def test_add_concern_bad_severity(runner):
+    _add_ecs(runner, name="w1")
+    res = runner.invoke(
+        app,
+        [
+            "concern",
+            "add",
+            "--json",
+            "--resource",
+            "w1",
+            "--category",
+            "x",
+            "--desc",
+            "y",
+            "--severity",
+            "fatal",
+        ],
+    )
+    assert res.exit_code == 1
+    assert "error" in json.loads(res.output)

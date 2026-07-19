@@ -14,10 +14,12 @@ from opsctl.plugin.tools import _run_opsctl, make_handler
 
 
 class FakeCtx:
-    """捕获 register_tool 调用, 便于断言."""
+    """捕获 register_tool/register_skill/register_command 调用, 便于断言."""
 
     def __init__(self):
         self.registered = {}
+        self.skills = {}
+        self.commands = {}
 
     def register_tool(self, *, name, toolset, schema, handler, description="", emoji=""):
         self.registered[name] = {
@@ -27,6 +29,12 @@ class FakeCtx:
             "description": description,
             "emoji": emoji,
         }
+
+    def register_skill(self, *, name, path):
+        self.skills[name] = path
+
+    def register_command(self, *, name, description, handler):
+        self.commands[name] = {"description": description, "handler": handler}
 
 
 def test_register_registers_all_tools():
@@ -39,6 +47,9 @@ def test_register_registers_all_tools():
     for name, entry in ctx.registered.items():
         assert entry["schema"]["name"] == name
         assert entry["schema"]["description"]
+    # 已注册技能和 slash 命令
+    assert "ops-inspect" in ctx.skills
+    assert "ops-inspect" in ctx.commands
 
 
 def test_make_handler_parses_cli_json():
@@ -115,7 +126,13 @@ def test_list_concerns_cli_args_builds():
     fn = PLUGIN_TOOLS["ops_list_concerns"]["cli_args"]
     assert fn({}) == ["concern", "list", "--json"]
     assert fn({"resource": "w1", "status": "resolved"}) == [
-        "concern", "list", "--json", "--resource", "w1", "--status", "resolved",
+        "concern",
+        "list",
+        "--json",
+        "--resource",
+        "w1",
+        "--status",
+        "resolved",
     ]
 
 
@@ -129,3 +146,38 @@ def test_add_resource_cli_args_passes_attributes():
     args = fn({"type": "ecs", "name": "w1", "attributes": ["host=1.2.3.4", "ssh_user=root"]})
     assert "--attr" in args
     assert "host=1.2.3.4" in args
+
+
+def test_add_resource_cli_args_passes_port_and_endpoint():
+    fn = PLUGIN_TOOLS["ops_add_resource"]["cli_args"]
+    args = fn({"type": "ecs", "name": "w1", "endpoint": "10.0.0.1", "port": 22})
+    assert "--endpoint" in args and "10.0.0.1" in args
+    assert "--port" in args and "22" in args
+
+
+def test_update_resource_cli_args_builds():
+    fn = PLUGIN_TOOLS["ops_update_resource"]["cli_args"]
+    args = fn({"name": "w1", "status": "inactive", "attributes": ["owner=team-a"]})
+    assert args[0] == "resource" and args[1] == "update"
+    assert "w1" in args
+    assert "--status" in args and "inactive" in args
+    assert "--attr" in args and "owner=team-a" in args
+
+
+def test_update_resource_cli_args_clears_endpoint():
+    fn = PLUGIN_TOOLS["ops_update_resource"]["cli_args"]
+    args = fn({"name": "w1", "endpoint": ""})
+    assert "--endpoint" in args
+
+
+def test_delete_resource_cli_args_default_no_force():
+    fn = PLUGIN_TOOLS["ops_delete_resource"]["cli_args"]
+    args = fn({"name": "w1"})
+    assert "--force" not in args
+    assert "w1" in args
+
+
+def test_delete_resource_cli_args_force_when_requested():
+    fn = PLUGIN_TOOLS["ops_delete_resource"]["cli_args"]
+    args = fn({"name": "w1", "force": True})
+    assert "--force" in args

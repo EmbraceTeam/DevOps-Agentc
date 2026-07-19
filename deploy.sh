@@ -59,7 +59,7 @@ if [ "$LOCAL" = false ]; then
         info "上传到 $REMOTE:~/"
         UPLOAD_FILES=("$WHEEL_FILE")
         if [ -n "$SOUL_PATH" ]; then
-            UPLOAD_FILES+=("$PROJECT_DIR/src/opsctl/plugin/contexts/ops-engineer/CONTEXT.md")
+            UPLOAD_FILES+=("$PROJECT_DIR/src/opsctl/plugin/contexts/ops-engineer/SOUL.md")
         fi
         scp "${UPLOAD_FILES[@]}" "$REMOTE":~/
         REMOTE_CMD="set -euo pipefail
@@ -82,7 +82,7 @@ fi
             REMOTE_CMD="$REMOTE_CMD
 # 安装角色提示词
 mkdir -p \"\$(dirname \"$SOUL_PATH\")\"
-cp ~/CONTEXT.md \"$SOUL_PATH\"
+cp ~/SOUL.md \"$SOUL_PATH\"
 echo \"SOUL.md 已安装到: $SOUL_PATH\"
 "
         fi
@@ -117,7 +117,7 @@ CONFIG
 fi
 if [ -n "$SOUL_PATH" ]; then
     mkdir -p "$(dirname "$SOUL_PATH")"
-    cp "$PROJECT_DIR/src/opsctl/plugin/contexts/ops-engineer/CONTEXT.md" "$SOUL_PATH"
+    cp "$PROJECT_DIR/src/opsctl/plugin/contexts/ops-engineer/SOUL.md" "$SOUL_PATH"
     echo "SOUL.md 已安装到: $SOUL_PATH"
 fi
 echo "=== 验证 ==="

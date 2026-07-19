@@ -53,10 +53,15 @@ def register(ctx) -> None:  # type: ignore[no-untyped-def]
         logging.getLogger("opsctl").exception("注册命令 /ops-inspect 失败, 继续加载")
 
 
-def _handle_inspect(_args: str, ctx) -> str:  # type: ignore[no-untyped-def]
-    """/ops-inspect 处理器: 遍历每个资源, 逐个检查其关注项, 汇总报告."""
+def _handle_inspect(args: str) -> str:  # type: ignore[no-untyped-def]
+    """/ops-inspect 处理器: 遍历每个资源, 逐个检查其关注项, 汇总报告.
+
+    通过 subprocess 直接调 opsctl CLI (与 Plugin tools 一致的解耦模式).
+    """
+    from .tools import _run_opsctl
+
     # 1. 获取资源列表
-    resources_result = ctx.dispatch_tool("ops_list_resources", {})
+    resources_result = _run_opsctl(["resource", "list", "--json"])
     if isinstance(resources_result, dict) and "error" in resources_result:
         return f"巡检失败: 无法获取资源列表 — {resources_result['error']}"
     if not isinstance(resources_result, list):
@@ -79,7 +84,7 @@ def _handle_inspect(_args: str, ctx) -> str:  # type: ignore[no-untyped-def]
     all_concerns: list[dict] = []
     for r in resources_result:
         rname = r.get("name", "?")
-        result = ctx.dispatch_tool("ops_list_concerns", {"resource": rname})
+        result = _run_opsctl(["concern", "list", "--json", "--resource", rname])
         if isinstance(result, list):
             for c in result:
                 c["_resource_name"] = rname

@@ -72,7 +72,22 @@ class RedisResource(Resource):
         "连接: `redis-cli -h <host> -p <port> -a <password> -n <db>`. 具体命令由 Agent 决定."
     )
     default_concerns = [
-        ConcernTemplate(category="capacity", description="内存使用率 > 80%", severity="warning"),
+        ConcernTemplate(
+            category="capacity",
+            description="内存使用率监控 (used_memory vs maxmemory)",
+            severity="warning",
+        ),
+        ConcernTemplate(
+            category="capacity",
+            description="缓存命中率监控 (keyspace_hits vs misses)",
+            severity="warning",
+        ),
+        ConcernTemplate(
+            category="capacity", description="key 逐出率监控 (evicted_keys > 0)", severity="warning"
+        ),
+        ConcernTemplate(
+            category="capacity", description="客户端连接数监控 (connected_clients)", severity="info"
+        ),
     ]
 
 
@@ -91,8 +106,15 @@ class MySQLResource(Resource):
         "具体 SQL 由 Agent 决定."
     )
     default_concerns = [
-        ConcernTemplate(category="capacity", description="连接数监控", severity="warning"),
+        ConcernTemplate(
+            category="capacity",
+            description="连接数使用率 > 80% (max_connections)",
+            severity="warning",
+        ),
         ConcernTemplate(category="renewal", description="备份状态检查", severity="critical"),
+        ConcernTemplate(
+            category="capacity", description="数据库磁盘使用率监控", severity="warning"
+        ),
     ]
 
 
@@ -111,9 +133,20 @@ class PostgresResource(Resource):
         "具体 SQL 功能由 Agent 自行决定, 不在资源元数据中描述."
     )
     default_concerns = [
-        ConcernTemplate(category="capacity", description="连接数监控", severity="warning"),
-        ConcernTemplate(category="capacity", description="复制延迟监控", severity="warning"),
-        ConcernTemplate(category="renewal", description="备份状态检查", severity="critical"),
+        ConcernTemplate(
+            category="capacity",
+            description="连接数使用率 > 80% (max_connections)",
+            severity="warning",
+        ),
+        ConcernTemplate(
+            category="capacity", description="复制延迟监控 (replay_lag)", severity="warning"
+        ),
+        ConcernTemplate(
+            category="renewal", description="备份状态检查 (归档状态)", severity="critical"
+        ),
+        ConcernTemplate(
+            category="capacity", description="数据库磁盘使用率监控 (含 pg_wal)", severity="warning"
+        ),
     ]
 
 
@@ -130,6 +163,8 @@ class HBaseResource(Resource):
         ConcernTemplate(
             category="capacity", description="RegionServer 健康检查", severity="warning"
         ),
+        ConcernTemplate(category="capacity", description="HDFS 磁盘使用率监控", severity="warning"),
+        ConcernTemplate(category="capacity", description="Region 均衡状态检查", severity="info"),
     ]
 
 
@@ -175,6 +210,7 @@ class APISIXResource(Resource):
     default_concerns = [
         ConcernTemplate(category="expiry", description="SSL 证书到期检查", severity="critical"),
         ConcernTemplate(category="health", description="Admin API 健康检查", severity="warning"),
+        ConcernTemplate(category="health", description="上游节点健康检查", severity="warning"),
     ]
 
 
@@ -197,6 +233,7 @@ class KeycloakResource(Resource):
     default_concerns = [
         ConcernTemplate(category="expiry", description="SSL 证书到期检查", severity="critical"),
         ConcernTemplate(category="health", description="Keycloak 服务健康检查", severity="warning"),
+        ConcernTemplate(category="health", description="Token 签发状态检查", severity="warning"),
     ]
 
 
@@ -218,5 +255,8 @@ class EtcdResource(Resource):
     )
     default_concerns = [
         ConcernTemplate(category="health", description="etcd 集群健康检查", severity="critical"),
-        ConcernTemplate(category="capacity", description="etcd 存储配额使用率", severity="warning"),
+        ConcernTemplate(
+            category="capacity", description="etcd 存储配额使用率监控", severity="warning"
+        ),
+        ConcernTemplate(category="health", description="etcd Leader 变更监控", severity="warning"),
     ]

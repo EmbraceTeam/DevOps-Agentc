@@ -90,6 +90,30 @@ opsctl 同时是一个 Hermes Plugin，把上述能力暴露为 LLM 可调用工
 
 Plugin handler 永远通过 subprocess 调 `opsctl --json`，与 CLI 解耦，CLI 升级不影响 Plugin 契约。
 
+### 定时巡检（Hermes Cron）
+
+Plugin 注册了 `/ops-inspect` slash 命令，用于遍历所有资源的关注项并分级报告。要让它定时运行：
+
+在 Hermes 中说一句**自然语言**，它就会记住 Cron 任务：
+
+```text
+每天早上 9 点执行 /ops-inspect
+```
+
+Hermes 会自动创建 Cron 定时任务。不需要手动编辑配置文件或写 cron 表达式。
+
+如果以后想改时间：
+
+```text
+把巡检时间改到每天下午 3 点
+```
+
+想查看已设置的定时任务：
+
+```text
+查看我的定时任务
+```
+
 ## 扩展自定义资源类型
 
 在任意模块定义子类并 `@register_resource`，无需改动其它文件：

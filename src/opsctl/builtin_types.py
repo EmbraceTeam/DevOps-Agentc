@@ -50,7 +50,11 @@ class ECSResource(Resource):
         "或带密码方式登录. 登录后能做什么由 Agent 决定, 不在资源元数据中描述."
     )
     default_concerns = [
-        ConcernTemplate(category="capacity", description="磁盘使用率 > 80%", severity="warning"),
+        ConcernTemplate(category="capacity", description="CPU 使用率监控", severity="warning"),
+        ConcernTemplate(category="capacity", description="内存使用率监控", severity="warning"),
+        ConcernTemplate(category="capacity", description="磁盘使用率监控", severity="warning"),
+        ConcernTemplate(category="capacity", description="磁盘 IO 监控", severity="warning"),
+        ConcernTemplate(category="capacity", description="网络带宽使用率监控", severity="warning"),
         ConcernTemplate(category="expiry", description="SSH 密钥到期检查", severity="critical"),
     ]
 

@@ -46,11 +46,13 @@ def test_create_resource_writes_main_and_attributes(conn):
 
 def test_create_resource_creates_default_concerns(conn):
     _add_ecs(conn, name="ecs-dc")
-    # ECS 有 2 个默认关注点: 磁盘使用率 + SSH 密钥到期
+    # ECS 默认关注点: CPU/内存/磁盘/IO/网络 + SSH 密钥
     concerns = repo.list_concerns(conn, resource="ecs-dc", status="open")
-    assert len(concerns) >= 2
+    assert len(concerns) >= 3
     descriptions = {c.description for c in concerns}
-    assert "磁盘使用率 > 80%" in descriptions
+    assert "CPU 使用率监控" in descriptions
+    assert "内存使用率监控" in descriptions
+    assert "磁盘使用率监控" in descriptions
     assert "SSH 密钥到期检查" in descriptions
 
 

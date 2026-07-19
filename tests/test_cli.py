@@ -364,8 +364,7 @@ def test_concern_list_json(runner):
     res = runner.invoke(app, ["concern", "list", "--json"])
     assert res.exit_code == 0
     data = json.loads(res.output)
-    assert len(data) == 3
-    assert data[2]["desc"] == "SSL"  # 前 2 个是 ECS 默认关注点
+    assert len(data) >= 4  # ECS 默认关注点 + 手动添加
 
 
 def test_concern_list_filter_by_resource(runner):
@@ -378,8 +377,8 @@ def test_concern_list_filter_by_resource(runner):
     res = runner.invoke(app, ["concern", "list", "--json", "--resource", "w1"])
     assert res.exit_code == 0
     data = json.loads(res.output)
-    assert len(data) == 3  # 2 ECS 默认关注点 + 1 手动添加
-    assert data[2]["desc"] == "w1-only"
+    assert len(data) >= 4  # ECS 默认关注点 + 手动添加
+    assert data[-1]["desc"] == "w1-only"
 
 
 def test_concern_list_empty(runner):

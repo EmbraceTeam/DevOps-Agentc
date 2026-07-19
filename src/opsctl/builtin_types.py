@@ -232,7 +232,6 @@ class KeycloakResource(Resource):
         "用户同步) 由 Agent 自行决定."
     )
     default_concerns = [
-        ConcernTemplate(category="expiry", description="SSL 证书到期检查", severity="critical"),
         ConcernTemplate(category="health", description="Keycloak 服务健康检查", severity="warning"),
         ConcernTemplate(category="health", description="Token 签发状态检查", severity="warning"),
     ]

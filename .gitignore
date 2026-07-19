@@ -18,3 +18,9 @@ __pycache__/
 data/*.db
 data/*.db-wal
 data/*.db-shm
+
+# 构建产物
+build/
+dist/
+*.whl
+*.egg-info/

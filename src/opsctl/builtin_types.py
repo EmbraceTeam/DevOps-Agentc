@@ -55,6 +55,9 @@ class ECSResource(Resource):
         ConcernTemplate(category="capacity", description="磁盘使用率监控", severity="warning"),
         ConcernTemplate(category="capacity", description="磁盘 IO 监控", severity="warning"),
         ConcernTemplate(category="capacity", description="网络带宽使用率监控", severity="warning"),
+        ConcernTemplate(
+            category="security", description="SSH 暴力破解监控 (auth.log)", severity="critical"
+        ),
         ConcernTemplate(category="expiry", description="实例过期时间监控", severity="critical"),
         ConcernTemplate(category="expiry", description="SSH 密钥到期检查", severity="critical"),
     ]
@@ -233,7 +236,7 @@ class KeycloakResource(Resource):
     )
     default_concerns = [
         ConcernTemplate(category="health", description="Keycloak 服务健康检查", severity="warning"),
-        ConcernTemplate(category="health", description="Token 签发状态检查", severity="warning"),
+        ConcernTemplate(category="health", description="近一小时异常日志监控", severity="warning"),
     ]
 
 

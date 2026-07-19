@@ -206,7 +206,18 @@ def test_resource_types_lists_all(runner):
     res = runner.invoke(app, ["resource", "types", "--json"])
     assert res.exit_code == 0
     types = json.loads(res.output)
-    assert {"ecs", "redis", "postgres", "mysql", "hbase", "aliyun_account", "service"} <= set(types)
+    assert {
+        "ecs",
+        "redis",
+        "postgres",
+        "mysql",
+        "hbase",
+        "aliyun_account",
+        "service",
+        "apisix",
+        "keycloak",
+        "etcd",
+    } <= set(types)
 
 
 def test_human_format_output_no_json_flag(runner):
@@ -353,8 +364,8 @@ def test_concern_list_json(runner):
     res = runner.invoke(app, ["concern", "list", "--json"])
     assert res.exit_code == 0
     data = json.loads(res.output)
-    assert len(data) == 1
-    assert data[0]["desc"] == "SSL"
+    assert len(data) == 3
+    assert data[2]["desc"] == "SSL"  # 前 2 个是 ECS 默认关注点
 
 
 def test_concern_list_filter_by_resource(runner):
@@ -367,8 +378,8 @@ def test_concern_list_filter_by_resource(runner):
     res = runner.invoke(app, ["concern", "list", "--json", "--resource", "w1"])
     assert res.exit_code == 0
     data = json.loads(res.output)
-    assert len(data) == 1
-    assert data[0]["desc"] == "w1-only"
+    assert len(data) == 3  # 2 ECS 默认关注点 + 1 手动添加
+    assert data[2]["desc"] == "w1-only"
 
 
 def test_concern_list_empty(runner):

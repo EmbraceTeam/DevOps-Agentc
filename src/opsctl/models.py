@@ -80,6 +80,19 @@ class AttributeSpec:
             )
 
 
+@dataclass
+class ConcernTemplate:
+    """资源类型的默认关注点模板.
+
+    创建资源时 ``create_resource`` 会自动为每个模板生成一条 concern.
+    ``due_at`` 不应包含在模板中 — 那是具体资源实例化的运行时值.
+    """
+
+    category: str
+    description: str
+    severity: str = "info"
+
+
 class Resource:
     """资源抽象基类.
 
@@ -87,6 +100,7 @@ class Resource:
     - ``type``: 类型字符串 (唯一键, 如 "ecs", "postgres")
     - ``standard_attributes``: 该类型的固定字段声明 dict
     - ``operations_guide``: 纯文本, 告诉 Agent 如何操作该类型资源
+    - (可选) ``default_concerns``: 创建资源时自动生成的默认关注点
 
     ``standard_attributes`` 形如::
 
@@ -95,11 +109,19 @@ class Resource:
             "port": {"type": "int", "default": 5432},
             "password": {"type": "secret"},
         }
+
+    ``default_concerns`` 形如::
+
+        [
+            ConcernTemplate(category="expiry", description="SSL 证书到期检查", severity="critical"),
+            ConcernTemplate(category="capacity", description="磁盘使用率监控", severity="warning"),
+        ]
     """
 
     type: ClassVar[str] = ""
     standard_attributes: ClassVar[dict[str, dict]] = {}
     operations_guide: ClassVar[str] = ""
+    default_concerns: ClassVar[list[ConcernTemplate]] = []
 
     @classmethod
     def resolved_standard_attributes(cls) -> dict[str, AttributeSpec]:

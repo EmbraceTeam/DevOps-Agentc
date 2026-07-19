@@ -44,6 +44,16 @@ def test_create_resource_writes_main_and_attributes(conn):
     assert host_attr["is_standard"] == 1
 
 
+def test_create_resource_creates_default_concerns(conn):
+    _add_ecs(conn, name="ecs-dc")
+    # ECS 有 2 个默认关注点: 磁盘使用率 + SSH 密钥到期
+    concerns = repo.list_concerns(conn, resource="ecs-dc", status="open")
+    assert len(concerns) >= 2
+    descriptions = {c.description for c in concerns}
+    assert "磁盘使用率 > 80%" in descriptions
+    assert "SSH 密钥到期检查" in descriptions
+
+
 def test_create_resource_rejects_unregistered_type(conn):
     with pytest.raises(ResourceTypeNotFoundError):
         repo.create_resource(conn, type_name="nope", name="x", attributes={})
@@ -236,7 +246,10 @@ def test_add_concern_rejects_bad_severity(conn):
 def test_add_concern_normalizes_due_at_to_utc(conn):
     _add_ecs(conn, "w1")
     c = repo.add_concern(
-        conn, resource="w1", category="x", description="y",
+        conn,
+        resource="w1",
+        category="x",
+        description="y",
         due_at="2026-12-31T00:00:00+08:00",  # 北京时间
     )
     # 归一化为 UTC: 2026-12-30T16:00:00+00:00

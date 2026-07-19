@@ -117,6 +117,13 @@ def create_resource(
                VALUES (?,?,?,?,?)""",
             (rid, key, _stringify(raw, resolved_type, key), resolved_type, is_std),
         )
+    # 自动创建资源类型的默认关注点
+    for concern in cls.default_concerns:
+        conn.execute(
+            """INSERT INTO concerns (resource_id, category, description, severity, status,
+               created_at) VALUES (?,?,?,?,?,?)""",
+            (rid, concern.category, concern.description, concern.severity, "open", now),
+        )
     conn.commit()
     return get_resource(conn, rid)
 
@@ -452,9 +459,7 @@ def add_concern(
     severity: str = "info",
 ) -> Concern:
     if severity not in VALID_SEVERITIES:
-        raise ValueError(
-            f"非法 severity '{severity}', 允许: {sorted(VALID_SEVERITIES)}"
-        )
+        raise ValueError(f"非法 severity '{severity}', 允许: {sorted(VALID_SEVERITIES)}")
     if not category or not description:
         raise ValueError("category 与 description 不能为空")
     rid = _resource_exists(conn, resource)

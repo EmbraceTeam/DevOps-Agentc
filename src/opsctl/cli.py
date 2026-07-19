@@ -304,16 +304,13 @@ def relation_add(
     source: Annotated[str, typer.Option("--source", help="依赖方 (id 或 name)")],
     target: Annotated[str, typer.Option("--target", help="被依赖方 (id 或 name)")],
     json_output: JsonOption = False,
-    relation_type: Annotated[str, typer.Option("--type")] = "depends_on",
     note: Annotated[str, typer.Option("--note")] = "",
 ) -> None:
     """添加依赖关系 (含环路检测)."""
     _set_json(json_output)
     try:
         with _db() as conn:
-            rel = repo.add_relation(
-                conn, source=source, target=target, relation_type=relation_type, note=note
-            )
+            rel = repo.add_relation(conn, source=source, target=target, note=note)
     except CycleError as e:
         _fail(str(e))
     except KeyError as e:

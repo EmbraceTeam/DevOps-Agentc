@@ -14,6 +14,8 @@ from typing import ClassVar
 
 # value_type 取值, 与 resource_attributes.value_type 列对应
 VALID_VALUE_TYPES = frozenset({"str", "int", "bool", "secret", "json"})
+# 关系类型: 当前只支持依赖关系, 后续如需扩展再加
+VALID_RELATION_TYPES = frozenset({"depends_on"})
 
 
 class ResourceRegistryError(Exception):

@@ -112,9 +112,6 @@ def test_add_relation_cli_args_builds():
     args = fn({"source": "a", "target": "b"})
     assert "--source" in args and "a" in args
     assert "--target" in args and "b" in args
-    # 自定义 type 也应透传
-    args2 = fn({"source": "a", "target": "b", "type": "connects_to"})
-    assert "connects_to" in args2
 
 
 def test_relation_graph_cli_args_builds():

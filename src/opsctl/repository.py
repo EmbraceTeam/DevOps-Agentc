@@ -285,7 +285,10 @@ def add_relation(
     """添加关系, 拒绝循环依赖.
 
     环路检测: 若 target -> ... -> source 已存在路径, 则新加 source->target 后会形成环.
+    关系类型仅支持 ``depends_on``.
     """
+    if relation_type not in {"depends_on"}:
+        raise ValueError(f"关系类型仅支持 depends_on, 收到 '{relation_type}'")
     source_id = _resource_exists(conn, source)
     target_id = _resource_exists(conn, target)
     # 检测: 从 target 出发能否到达 source; 若能, 加 source->target 即成环

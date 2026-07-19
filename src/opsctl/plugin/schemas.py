@@ -74,8 +74,6 @@ def _add_relation_args(params: dict) -> list[str]:
         "--target",
         params["target"],
     ]
-    if params.get("type"):
-        args += ["--type", params["type"]]
     return args
 
 
@@ -182,7 +180,6 @@ PLUGIN_TOOLS: dict[str, dict] = {
                 "properties": {
                     "source": {"type": "string", "description": "依赖方资源 id 或 name"},
                     "target": {"type": "string", "description": "被依赖方资源 id 或 name"},
-                    "type": {"type": "string", "description": "关系类型, 默认 depends_on"},
                 },
                 "required": ["source", "target"],
             },

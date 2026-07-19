@@ -1,0 +1,20 @@
+# IDE
+.idea/
+.vscode/
+
+# 缓存
+.rumdl_cache/
+__pycache__/
+*.pyc
+
+# OS
+.DS_Store
+
+# 本地工具缓存
+.serena/
+
+# 运行时数据（守 NFR-7：运行时数据不进 git，CLI 唯一读写入口）
+# 模板文件（templates/）进 git，DB 文件不进 git
+data/*.db
+data/*.db-wal
+data/*.db-shm

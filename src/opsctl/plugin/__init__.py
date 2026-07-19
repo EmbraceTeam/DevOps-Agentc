@@ -33,14 +33,24 @@ def register(ctx) -> None:  # type: ignore[no-untyped-def]
     # -- 只读运维技能 (Plugin 打包, 不会被 Agent 自动修改) --
     skill_path = Path(__file__).parent / "skills" / "ops-inspect"
     if skill_path.is_dir():
-        ctx.register_skill(name="ops-inspect", path=str(skill_path))
+        try:
+            ctx.register_skill(name="ops-inspect", path=skill_path)
+        except Exception:
+            import logging
+
+            logging.getLogger("opsctl").exception("注册技能 ops-inspect 失败, 继续加载")
 
     # -- /ops-inspect slash 命令: 统一运维巡检 --
-    ctx.register_command(
-        name="ops-inspect",
-        description="统一运维巡检: 遍历所有资源并检查 7 天内到期的关注点",
-        handler=_handle_inspect,
-    )
+    try:
+        ctx.register_command(
+            name="ops-inspect",
+            description="统一运维巡检: 遍历所有资源并检查 7 天内到期的关注点",
+            handler=_handle_inspect,
+        )
+    except Exception:
+        import logging
+
+        logging.getLogger("opsctl").exception("注册命令 /ops-inspect 失败, 继续加载")
 
 
 def _handle_inspect(_args: str, ctx) -> str:  # type: ignore[no-untyped-def]

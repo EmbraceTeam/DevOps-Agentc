@@ -469,3 +469,21 @@ def test_relation_delete_idempotent(runner):
     _add_ecs(runner, name="b")
     r_del = runner.invoke(app, ["relation", "delete", "--json", "--source", "a", "--target", "b"])
     assert r_del.exit_code == 0
+
+
+def test_concern_resolve_marks_as_resolved(runner):
+    _add_ecs(runner, name="w1")
+    res = runner.invoke(app, ["concern", "add", "--json", "--resource", "w1",
+                              "--category", "expiry", "--desc", "测试"])
+    assert res.exit_code == 0
+    cid = json.loads(res.output)["id"]
+    r = runner.invoke(app, ["concern", "resolve", "--json", str(cid)])
+    assert r.exit_code == 0
+    out = json.loads(r.output)
+    assert out["status"] == "resolved"
+
+
+def test_concern_resolve_not_found(runner):
+    res = runner.invoke(app, ["concern", "resolve", "--json", "99999"])
+    assert res.exit_code == 1
+    assert "error" in json.loads(res.output)

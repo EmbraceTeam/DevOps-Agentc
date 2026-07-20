@@ -463,6 +463,33 @@ def concern_add(
         console.print(f"[green]✓[/green] 关注点 #{c.id} 已添加到 {c.resource_id}")
 
 
+@concern_app.command("resolve")
+def concern_resolve(
+    concern_id: Annotated[int, typer.Argument(help="关注点 id")],
+    json_output: JsonOption = False,
+) -> None:
+    """将关注点标记为已解决."""
+    _set_json(json_output)
+    try:
+        with _db() as conn:
+            result = repo.resolve_concern(conn, concern_id=concern_id)
+    except KeyError as e:
+        _fail(str(e))
+    if result is None:
+        _fail(f"关注点 #{concern_id} 不存在")
+    if _JSON_FLAG["value"]:
+        _emit_json(
+            {
+                "id": result.id,
+                "resource": result.resource_id,
+                "status": result.status,
+                "checked_at": result.checked_at,
+            }
+        )
+    else:
+        console.print(f"[green]✓[/green] 关注点 #{concern_id} 已解决")
+
+
 @concern_app.command("list")
 def concern_list(
     json_output: JsonOption = False,

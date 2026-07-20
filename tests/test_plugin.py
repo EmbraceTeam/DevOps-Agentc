@@ -185,3 +185,17 @@ def test_delete_relation_cli_args_builds():
     args = fn({"source": "a", "target": "b"})
     assert "--source" in args and "a" in args
     assert "--target" in args and "b" in args
+
+
+def test_add_concern_cli_args_builds():
+    fn = PLUGIN_TOOLS["ops_add_concern"]["cli_args"]
+    args = fn({"resource": "w1", "category": "expiry", "description": "test", "due": "2026-12-31", "severity": "critical"})
+    assert "--resource" in args and "w1" in args
+    assert "--due" in args and "2026-12-31" in args
+    assert "--severity" in args and "critical" in args
+
+
+def test_resolve_concern_cli_args_builds():
+    fn = PLUGIN_TOOLS["ops_resolve_concern"]["cli_args"]
+    args = fn({"id": 42})
+    assert "42" in args

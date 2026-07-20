@@ -529,6 +529,33 @@ def list_concerns(
     ]
 
 
+def resolve_concern(
+    conn: sqlite3.Connection,
+    *,
+    concern_id: int,
+) -> Concern | None:
+    """将关注点状态设为 resolved, 记录 checked_at. 不存在则返回 None."""
+    row = conn.execute("SELECT * FROM concerns WHERE id = ?", (concern_id,)).fetchone()
+    if row is None:
+        return None
+    now = _now_iso()
+    conn.execute(
+        """UPDATE concerns SET status = 'resolved', checked_at = ? WHERE id = ?""",
+        (now, concern_id),
+    )
+    conn.commit()
+    return Concern(
+        id=row["id"],
+        resource_id=row["resource_id"],
+        category=row["category"],
+        description=row["description"],
+        due_at=row["due_at"],
+        severity=row["severity"],
+        checked_at=now,
+        status="resolved",
+    )
+
+
 def concerns_due(conn: sqlite3.Connection, within: str) -> list[Concern]:
     """查询 within 时间窗口内到期的 open 关注点."""
     threshold = _parse_due_within(within)

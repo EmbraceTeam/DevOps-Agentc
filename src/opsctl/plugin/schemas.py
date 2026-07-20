@@ -106,6 +106,29 @@ def _concerns_due_args(params: dict) -> list[str]:
     return ["concern", "due", "--json", "--within", params["within"]]
 
 
+def _add_concern_args(params: dict) -> list[str]:
+    args = [
+        "concern",
+        "add",
+        "--json",
+        "--resource",
+        params["resource"],
+        "--category",
+        params["category"],
+        "--desc",
+        params["description"],
+    ]
+    if params.get("due"):
+        args += ["--due", params["due"]]
+    if params.get("severity"):
+        args += ["--severity", params["severity"]]
+    return args
+
+
+def _resolve_concern_args(params: dict) -> list[str]:
+    return ["concern", "resolve", "--json", str(params["id"])]
+
+
 PLUGIN_TOOLS: dict[str, dict] = {
     "ops_list_resources": {
         "schema": {
@@ -298,5 +321,40 @@ PLUGIN_TOOLS: dict[str, dict] = {
             },
         },
         "cli_args": _delete_resource_args,
+    },
+    "ops_add_concern": {
+        "schema": {
+            "name": "ops_add_concern",
+            "description": "为资源添加关注点 (如证书过期/磁盘水位). 支持设置到期时间和严重级别.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "resource": {"type": "string", "description": "资源 id 或 name"},
+                    "category": {"type": "string", "description": "expiry/capacity/renewal/custom"},
+                    "description": {
+                        "type": "string",
+                        "description": "描述, 如 SSL 证书 2026-12-31 到期",
+                    },
+                    "due": {"type": "string", "description": "到期时间 (ISO 8601)"},
+                    "severity": {"type": "string", "description": "info/warning/critical"},
+                },
+                "required": ["resource", "category", "description"],
+            },
+        },
+        "cli_args": _add_concern_args,
+    },
+    "ops_resolve_concern": {
+        "schema": {
+            "name": "ops_resolve_concern",
+            "description": "将关注点标记为已解决. 修复问题后调用本工具闭环, 避免重复告警.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "integer", "description": "关注点 id"},
+                },
+                "required": ["id"],
+            },
+        },
+        "cli_args": _resolve_concern_args,
     },
 }

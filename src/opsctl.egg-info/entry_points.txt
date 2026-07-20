@@ -1,5 +1,0 @@
-[console_scripts]
-opsctl = opsctl.cli:main
-
-[hermes_agent.plugins]
-opsctl = opsctl.plugin

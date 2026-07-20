@@ -1,6 +1,0 @@
-typer>=0.12
-rich>=13.7
-
-[dev]
-pytest>=8.0
-ruff>=0.5

@@ -24,3 +24,4 @@ build/
 dist/
 *.whl
 *.egg-info/
+uv.lock

@@ -40,7 +40,7 @@ class ECSResource(Resource):
     type = "ecs"
     standard_attributes = {
         "host": {"type": "str", "required": True, "description": "IP 或域名"},
-        "ssh_port": {"type": "int", "default": "22", "description": "SSH 端口"},
+        "ssh_port": {"type": "str", "default": "22", "description": "SSH 端口 (逗号分隔多端口)"},
         "ssh_user": {"type": "str", "required": True, "description": "SSH 登录用户"},
         "ssh_key_path": {"type": "str", "description": "SSH 私钥路径, 如 ~/.ssh/id_rsa"},
         "ssh_password": {"type": "secret", "description": "SSH 密码 (与私钥二选一)"},
@@ -68,7 +68,7 @@ class RedisResource(Resource):
     type = "redis"
     standard_attributes = {
         "host": {"type": "str", "required": True},
-        "port": {"type": "int", "default": "6379"},
+        "port": {"type": "str", "default": "6379", "description": "端口 (逗号分隔多端口)"},
         "db": {"type": "int", "default": "0"},
         "password": {"type": "secret"},
     }
@@ -100,7 +100,7 @@ class MySQLResource(Resource):
     type = "mysql"
     standard_attributes = {
         "host": {"type": "str", "required": True},
-        "port": {"type": "int", "default": "3306"},
+        "port": {"type": "str", "default": "3306", "description": "端口 (逗号分隔多端口)"},
         "db_name": {"type": "str", "required": True},
         "username": {"type": "str", "required": True},
         "password": {"type": "secret"},
@@ -127,7 +127,7 @@ class PostgresResource(Resource):
     type = "postgres"
     standard_attributes = {
         "host": {"type": "str", "required": True},
-        "port": {"type": "int", "default": "5432"},
+        "port": {"type": "str", "default": "5432", "description": "端口 (逗号分隔多端口)"},
         "db_name": {"type": "str", "required": True},
         "username": {"type": "str", "required": True},
         "password": {"type": "secret"},
@@ -159,7 +159,7 @@ class HBaseResource(Resource):
     type = "hbase"
     standard_attributes = {
         "host": {"type": "str", "required": True, "description": "Thrift/ZK 主机"},
-        "port": {"type": "int", "default": "9090", "description": "Thrift 端口"},
+        "port": {"type": "str", "default": "9090", "description": "端口 (逗号分隔多端口)"},
         "zk_quorum": {"type": "str", "description": "ZooKeeper quorum (逗号分隔)"},
     }
     operations_guide = "连接: 通过 hbase shell 或 Thrift 客户端访问. 具体操作由 Agent 决定."
@@ -179,7 +179,7 @@ class ServiceResource(Resource):
     type = "service"
     standard_attributes = {
         "endpoint": {"type": "str", "description": "部署位置 (域名/IP/宿主机)"},
-        "port": {"type": "int", "description": "服务端口"},
+        "port": {"type": "str", "description": "端口 (逗号分隔多端口)"},
         "runtime": {"type": "str", "required": True, "description": "运行时: java|python|..."},
         "deploy_path": {"type": "str", "description": "部署路径"},
         "start_cmd": {"type": "str", "description": "启动命令"},
@@ -205,7 +205,7 @@ class APISIXResource(Resource):
     standard_attributes = {
         "admin_endpoint": {"type": "str", "required": True, "description": "Admin API 地址"},
         "admin_key": {"type": "secret", "required": True, "description": "Admin API 密钥"},
-        "admin_port": {"type": "int", "default": "9180", "description": "Admin API 端口"},
+        "admin_port": {"type": "str", "default": "9180", "description": "端口 (逗号分隔多端口)"},
     }
     operations_guide = (
         "管理: 通过 Admin API 操作: curl http://<admin_endpoint>:<admin_port>/apisix/admin/ . "
@@ -225,7 +225,7 @@ class KeycloakResource(Resource):
     type = "keycloak"
     standard_attributes = {
         "endpoint": {"type": "str", "required": True, "description": "Keycloak 服务器地址"},
-        "port": {"type": "int", "default": "8080", "description": "服务端口"},
+        "port": {"type": "str", "default": "8080", "description": "端口 (逗号分隔多端口)"},
         "realm": {"type": "str", "required": True, "description": "默认 Realm"},
         "admin_user": {"type": "str", "required": True, "description": "管理员用户名"},
         "admin_password": {"type": "secret", "required": True, "description": "管理员密码"},
@@ -247,7 +247,7 @@ class EtcdResource(Resource):
     type = "etcd"
     standard_attributes = {
         "endpoints": {"type": "str", "required": True, "description": "逗号分隔的 etcd 端点"},
-        "port": {"type": "int", "default": "2379", "description": "客户端端口"},
+        "port": {"type": "str", "default": "2379", "description": "端口 (逗号分隔多端口)"},
         "ca_cert": {"type": "str", "description": "CA 证书路径"},
         "client_cert": {"type": "str", "description": "客户端证书路径"},
         "client_key": {"type": "secret", "description": "客户端密钥路径"},
@@ -276,7 +276,7 @@ class DockerSwarmResource(Resource):
             "required": True,
             "description": "Manager 节点地址 (逗号分隔)",
         },
-        "port": {"type": "int", "default": "2377", "description": "Swarm 管理端口"},
+        "port": {"type": "str", "default": "2377", "description": "端口 (逗号分隔多端口)"},
         "node_count": {"type": "int", "description": "集群节点数"},
         "network_name": {"type": "str", "description": "默认 overlay 网络名"},
     }

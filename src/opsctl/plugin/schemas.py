@@ -209,7 +209,13 @@ PLUGIN_TOOLS: dict[str, dict] = {
     "ops_add_relation": {
         "schema": {
             "name": "ops_add_relation",
-            "description": "登记依赖关系: source 依赖 target. 含环路检测, 形成循环会被拒绝.",
+            "description": (
+                "登记依赖关系: source 依赖 target (含环路检测). "
+                "depends_on 定义: 运行时服务级依赖 — 如果 target 不可用, "
+                "source 就无法正常工作. "
+                "⚠️ 集群角色 (manager/worker, master/node) 不是 depends_on 关系, "
+                "应记录在集群资源的属性中."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {

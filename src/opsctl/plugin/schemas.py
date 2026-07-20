@@ -211,10 +211,11 @@ PLUGIN_TOOLS: dict[str, dict] = {
             "name": "ops_add_relation",
             "description": (
                 "登记依赖关系: source 依赖 target (含环路检测). "
-                "depends_on 定义: 运行时服务级依赖 — 如果 target 不可用, "
-                "source 就无法正常工作. "
-                "⚠️ 集群角色 (manager/worker, master/node) 不是 depends_on 关系, "
-                "应记录在集群资源的属性中."
+                "depends_on = 直接功能性依赖: A 正常运行需要 B 提供服务 "
+                "(如 A 连接 B 的数据库/API/配置存储). "
+                "集群成员、负载均衡同组、部署在同一台机器等拓扑关系 NOT depends_on. "
+                "示例: ✅ agent-service dep pg; ✅ apisix dep etcd. "
+                "❌ worker dep manager (集群角色); ❌ 服务 dep 它所在的主机."
             ),
             "parameters": {
                 "type": "object",

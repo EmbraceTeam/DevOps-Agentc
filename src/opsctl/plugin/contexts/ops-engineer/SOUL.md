@@ -70,3 +70,15 @@
 - **根因**：为什么发生
 - **处理结果**：修了 / 需要人工介入 / 已知问题正在跟进
 - （如果需要人工介入）**建议**：下一步该怎么做
+
+### 依赖关系的定义
+
+`depends_on` 表示**运行时服务级依赖**——如果 B 不可用，A 就无法正常工作。
+
+- ✅ agent-service → pg-main    (PG 挂了, agent-service 不可用)
+- ✅ apisix → etcd (etcd 挂了, APISIX 配置丢失)
+- ❌ worker → manager (这是集群角色, 不是运行时依赖)
+- ❌ 服务 A → 服务 A 所在的机器    (机器是部署载体, 不是依赖目标)
+
+集群角色 (manager/worker、master/node) 记录在集群资源的属性中,
+**不**作为节点间的 `depends_on` 关系。

@@ -42,8 +42,8 @@ class ECSResource(Resource):
         "host": {"type": "str", "required": True, "description": "IP 或域名"},
         "ssh_port": {"type": "int", "default": "22", "description": "SSH 端口"},
         "ssh_user": {"type": "str", "required": True, "description": "SSH 登录用户"},
-        "ssh_key_path": {"type": "str", "description": "SSH 私钥路径 (二选一)"},
-        "ssh_password": {"type": "secret", "description": "SSH 密码 (二选一)"},
+        "ssh_key_path": {"type": "str", "description": "SSH 私钥路径, 如 ~/.ssh/id_rsa"},
+        "ssh_password": {"type": "secret", "description": "SSH 密码 (与私钥二选一)"},
     }
     operations_guide = (
         "连接: `ssh -i <ssh_key_path> -p <ssh_port> <ssh_user>@<host>` "
@@ -262,4 +262,59 @@ class EtcdResource(Resource):
             category="capacity", description="etcd 存储配额使用率监控", severity="warning"
         ),
         ConcernTemplate(category="health", description="etcd Leader 变更监控", severity="warning"),
+    ]
+
+
+@register_resource
+class DockerSwarmResource(Resource):
+    """Docker Swarm 集群."""
+
+    type = "dockerswarm"
+    standard_attributes = {
+        "manager_endpoints": {
+            "type": "str",
+            "required": True,
+            "description": "Manager 节点地址 (逗号分隔)",
+        },
+        "port": {"type": "int", "default": "2377", "description": "Swarm 管理端口"},
+        "node_count": {"type": "int", "description": "集群节点数"},
+        "network_name": {"type": "str", "description": "默认 overlay 网络名"},
+    }
+    operations_guide = (
+        "管理: `docker node ls` 查看节点, `docker service ls` 查看服务. "
+        "Manager/worker 角色由 swarm 本身管理, 不作为节点间的依赖关系."
+    )
+    default_concerns = [
+        ConcernTemplate(category="health", description="Swarm 集群健康检查", severity="critical"),
+        ConcernTemplate(
+            category="health", description="Manager 节点可用性检查", severity="warning"
+        ),
+    ]
+
+
+@register_resource
+class K8sResource(Resource):
+    """Kubernetes 集群."""
+
+    type = "k8s"
+    standard_attributes = {
+        "api_endpoint": {"type": "str", "required": True, "description": "K8s API 服务器地址"},
+        "kubeconfig_path": {
+            "type": "str",
+            "description": "Kubeconfig 文件路径 (如 ~/.kube/config)",
+        },
+        "namespace": {"type": "str", "default": "default", "description": "默认 namespace"},
+        "cluster_token": {"type": "secret", "description": "Service Account Token"},
+        "node_count": {"type": "int", "description": "集群节点数"},
+    }
+    operations_guide = (
+        "管理: `kubectl` 操作集群. 具体 (Pod 管理/部署/日志) 由 Agent "
+        "自行决定. Master/node 角色由集群管理, 不作为节点间的依赖关系."
+    )
+    default_concerns = [
+        ConcernTemplate(category="health", description="K8s 集群健康检查", severity="critical"),
+        ConcernTemplate(
+            category="capacity", description="节点 CPU/内存使用率监控", severity="warning"
+        ),
+        ConcernTemplate(category="capacity", description="Pod 重启次数检查", severity="warning"),
     ]

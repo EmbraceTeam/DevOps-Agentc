@@ -217,6 +217,8 @@ def test_resource_types_lists_all(runner):
         "apisix",
         "keycloak",
         "etcd",
+        "dockerswarm",
+        "k8s",
     } <= set(types)
 
 
@@ -473,8 +475,10 @@ def test_relation_delete_idempotent(runner):
 
 def test_concern_resolve_marks_as_resolved(runner):
     _add_ecs(runner, name="w1")
-    res = runner.invoke(app, ["concern", "add", "--json", "--resource", "w1",
-                              "--category", "expiry", "--desc", "测试"])
+    res = runner.invoke(
+        app,
+        ["concern", "add", "--json", "--resource", "w1", "--category", "expiry", "--desc", "测试"],
+    )
     assert res.exit_code == 0
     cid = json.loads(res.output)["id"]
     r = runner.invoke(app, ["concern", "resolve", "--json", str(cid)])

@@ -363,6 +363,22 @@ def relation_list(
     console.print(table)
 
 
+@relation_app.command("delete")
+def relation_delete(
+    source: Annotated[str, typer.Option("--source", help="依赖方 (id 或 name)")],
+    target: Annotated[str, typer.Option("--target", help="被依赖方 (id 或 name)")],
+    json_output: JsonOption = False,
+) -> None:
+    """删除一条依赖关系."""
+    _set_json(json_output)
+    with _db() as conn:
+        repo.delete_relation(conn, source=source, target=target)
+    if _JSON_FLAG["value"]:
+        _emit_json({"deleted": {"source": source, "target": target}})
+    else:
+        console.print(f"[green]✓[/green] 已删除关系 {source} --depends_on--> {target}")
+
+
 @relation_app.command("graph")
 def relation_graph_cmd(
     name: Annotated[str, typer.Argument(help="资源 id 或 name")],

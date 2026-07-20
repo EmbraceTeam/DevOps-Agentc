@@ -77,6 +77,18 @@ def _add_relation_args(params: dict) -> list[str]:
     return args
 
 
+def _delete_relation_args(params: dict) -> list[str]:
+    return [
+        "relation",
+        "delete",
+        "--json",
+        "--source",
+        params["source"],
+        "--target",
+        params["target"],
+    ]
+
+
 def _relation_graph_args(params: dict) -> list[str]:
     return ["relation", "graph", "--json", params["name"]]
 
@@ -185,6 +197,23 @@ PLUGIN_TOOLS: dict[str, dict] = {
             },
         },
         "cli_args": _add_relation_args,
+    },
+    "ops_delete_relation": {
+        "schema": {
+            "name": "ops_delete_relation",
+            "description": (
+                "删除一条依赖关系 (source 依赖 target). 用于清理错误登记或已下线服务的关系."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "source": {"type": "string", "description": "依赖方资源 id 或 name"},
+                    "target": {"type": "string", "description": "被依赖方资源 id 或 name"},
+                },
+                "required": ["source", "target"],
+            },
+        },
+        "cli_args": _delete_relation_args,
     },
     "ops_relation_graph": {
         "schema": {

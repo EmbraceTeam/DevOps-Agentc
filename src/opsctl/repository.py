@@ -326,6 +326,25 @@ def add_relation(
     )
 
 
+def delete_relation(
+    conn: sqlite3.Connection,
+    *,
+    source: str,
+    target: str,
+) -> None:
+    """删除一条关系 (source 依赖 target). 不存在则静默忽略."""
+    try:
+        source_id = _resource_exists(conn, source)
+        target_id = _resource_exists(conn, target)
+    except KeyError:
+        return  # 资源不存在, 关系自然不存在
+    conn.execute(
+        """DELETE FROM relations WHERE source_id = ? AND target_id = ?""",
+        (source_id, target_id),
+    )
+    conn.commit()
+
+
 def _find_path(conn: sqlite3.Connection, start: str, goal: str) -> list[str] | None:
     """DFS: 沿 source->target 方向找 start 到 goal 的路径, 无则 None."""
     if start == goal:

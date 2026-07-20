@@ -178,3 +178,10 @@ def test_delete_resource_cli_args_force_when_requested():
     fn = PLUGIN_TOOLS["ops_delete_resource"]["cli_args"]
     args = fn({"name": "w1", "force": True})
     assert "--force" in args
+
+
+def test_delete_relation_cli_args_builds():
+    fn = PLUGIN_TOOLS["ops_delete_relation"]["cli_args"]
+    args = fn({"source": "a", "target": "b"})
+    assert "--source" in args and "a" in args
+    assert "--target" in args and "b" in args

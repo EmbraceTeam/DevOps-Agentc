@@ -449,3 +449,23 @@ def test_add_concern_bad_severity(runner):
     )
     assert res.exit_code == 1
     assert "error" in json.loads(res.output)
+
+
+def test_relation_delete_removes_relation(runner):
+    _add_ecs(runner, name="a")
+    _add_ecs(runner, name="b")
+    r1 = runner.invoke(app, ["relation", "add", "--json", "--source", "a", "--target", "b"])
+    assert r1.exit_code == 0
+    r_del = runner.invoke(app, ["relation", "delete", "--json", "--source", "a", "--target", "b"])
+    assert r_del.exit_code == 0
+    # 验证被删除
+    rl = runner.invoke(app, ["relation", "list", "--json"])
+    assert json.loads(rl.output) == []
+
+
+def test_relation_delete_idempotent(runner):
+    # 删除不存在的关系应静默成功
+    _add_ecs(runner, name="a")
+    _add_ecs(runner, name="b")
+    r_del = runner.invoke(app, ["relation", "delete", "--json", "--source", "a", "--target", "b"])
+    assert r_del.exit_code == 0

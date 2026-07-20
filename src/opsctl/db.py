@@ -16,6 +16,7 @@ import sqlite3
 from pathlib import Path
 
 DEFAULT_DB_PATH = Path("data/opsctl.db")
+HERMES_HOME_ENV_VAR = "HERMES_HOME"
 DB_ENV_VAR = "OPSCTL_DB"
 
 # 当前 schema 版本号 — 每次修改 _SCHEMA 或 _MIGRATIONS 时 +1
@@ -149,12 +150,19 @@ def _apply_pending(conn: sqlite3.Connection) -> None:
 
 
 def resolve_db_url(db_url: str | None = None) -> str:
-    """解析最终 DB URL, 优先级: 显式参数 > 环境变量 > 默认路径."""
+    """解析最终 DB URL, 优先级: 显式参数 > 环境变量 > HERMES_HOME > 默认路径.
+
+    当在 Hermes Agent 上下文中 (HERMES_HOME 被设置), 数据库自动隔离到各 profile:
+    ``$HERMES_HOME/data/opsctl.db``.
+    """
     if db_url:
         return db_url
     env_val = os.environ.get(DB_ENV_VAR)
     if env_val:
         return env_val
+    hermes_home = os.environ.get(HERMES_HOME_ENV_VAR)
+    if hermes_home:
+        return str(Path(hermes_home) / "data" / "opsctl.db")
     return str(DEFAULT_DB_PATH)
 
 

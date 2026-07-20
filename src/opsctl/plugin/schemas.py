@@ -211,12 +211,11 @@ PLUGIN_TOOLS: dict[str, dict] = {
             "name": "ops_add_relation",
             "description": (
                 "登记依赖关系: source 依赖 target (含环路检测). "
-                "depends_on = 运行时调用依赖: A 运行时直接调用 B 的 API/数据库/配置存储. "
-                "B 故障时 A 直接受影响. "
-                "NOT depends_on: "
-                "同集群成员关系、负载均衡同组、'由...组成'等拓扑归属关系. "
-                "示例: ✅ agent dep pg (连接数据库); ✅ apisix dep etcd (读配置). "
-                "❌ worker dep manager (集群角色分工); ❌ swarm dep 某台主机 (组成关系)."
+                "depends_on = 变更影响关联: 操作 target 时 source 可能受影响. "
+                "可以是运行时调用依赖 (APP→DB), 也可以是组成关系 (SWARM→NODE). "
+                "核心判断标准: '操作 target 前, 是否需要先考虑 source?'. "
+                "示例: ✅ agent dep pg (数据库); ✅ apisix dep etcd (配置). "
+                "✅ swarm dep node (组成关系); ❌ 同集群两个 worker 之间 (无直接关联)."
             ),
             "parameters": {
                 "type": "object",

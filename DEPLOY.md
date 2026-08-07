@@ -15,6 +15,16 @@ opsctl 以 **Hermes 目录插件** 形态分发：本仓库即插件源，`herme
 
 ## 快速部署
 
+### 一键部署（推荐）
+
+```bash
+bash deploy.sh --remote user@host --profiles "ops eog"
+```
+
+脚本自动完成：安装插件（默认 profile）→ 其他 profile 建 symlink → 逐 profile 启用 → 逐 profile 重启。
+
+### 手动部署
+
 在 Hermes 服务器上执行：
 
 ```bash
@@ -33,6 +43,49 @@ hermes gateway restart
 
 > `$HERMES_VENV` 是 Hermes 的虚拟环境路径（如 `/home/<user>/.hermes/hermes-agent/venv`）。
 > 安装后 Hermes 会渲染 `after-install.md` 提示上述步骤。
+
+## 多 profile 部署
+
+Hermes 的插件目录是 **per-profile** 的：`hermes plugins install` 只装到当前
+profile 的 `plugins/`（默认 profile 为 `~/.hermes/plugins/`，命名 profile 为
+`~/.hermes/profiles/<name>/plugins/`），其他 profile 的 gateway 看不到。
+
+**方案：默认 profile 安装一次，其他 profile 用 symlink 共享**（更新只需一次，
+`hermes plugins update` 的 git pull 会跟随 symlink）：
+
+```bash
+# 1. 默认 profile 安装
+hermes plugins install https://github.com/<your-org>/DevOps-Agent.git
+
+# 2. 其他 profile 建 symlink (以 ops/eog 为例)
+mkdir -p ~/.hermes/profiles/ops/plugins ~/.hermes/profiles/eog/plugins
+ln -sf ~/.hermes/plugins/opsctl-plugin ~/.hermes/profiles/ops/plugins/opsctl-plugin
+ln -sf ~/.hermes/plugins/opsctl-plugin ~/.hermes/profiles/eog/plugins/opsctl-plugin
+
+# 3. 配置技能树 external_dirs (agent 可见 ops-inspect 技能)
+#    插件 register_skill 注册的技能不进 <available_skills> 索引 (Hermes 设计),
+#    需在 config.yaml 的 skills.external_dirs 指向插件 skills 目录:
+#    默认: ~/.hermes/config.yaml
+#    ops:  ~/.hermes/profiles/ops/config.yaml
+#    eog:  ~/.hermes/profiles/eog/config.yaml
+#    skills:
+#      external_dirs:
+#        - ~/.hermes/plugins/opsctl-plugin/src/opsctl/plugin/skills
+
+# 4. 逐 profile 启用 + 重启
+hermes plugins enable opsctl-plugin
+hermes --profile ops plugins enable opsctl-plugin
+hermes --profile eog plugins enable opsctl-plugin
+hermes gateway restart
+hermes --profile ops gateway restart
+hermes --profile eog gateway restart
+```
+
+`bash deploy.sh --profiles "ops eog"` 会自动完成上述全部步骤（含 external_dirs 配置）。
+
+各 profile 的数据库仍按 `HERMES_HOME` 自动隔离（见下），互不影响。
+
+> 卸载时先移除各 profile config.yaml 的 `skills.external_dirs` 项，再 `hermes plugins remove`（目录不存在时 Hermes 会自动跳过，不报错）。
 
 ### 终端 CLI（可选）
 

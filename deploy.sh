@@ -70,26 +70,62 @@ for p in \$PROFILES; do
     echo "  ✓ profile \$p → symlink 已建立"
 done
 
-echo '=== 3/5 技能树 symlink (agent 可见) ==='
-# 插件注册的 skill 不进 <available_skills> 索引 (Hermes 设计),
-# 需链接到各 HERMES_HOME 的 skills 树 agent 才能看到.
-SKILL_SRC="\$DEFAULT_PLUGINS_DIR/\$PLUGIN_NAME/src/opsctl/plugin/skills/ops-inspect"
-link_skill() {
-    local home_dir="\$1"
-    local skill_dir="\$home_dir/skills/devops"
-    local skill_link="\$skill_dir/ops-inspect"
-    mkdir -p "\$skill_dir"
-    if [ -e "\$skill_link" ] && [ ! -L "\$skill_link" ]; then
-        echo "[WARN] \$skill_link 已存在且不是 symlink, 跳过"
-        return
-    fi
-    ln -sfn "\$SKILL_SRC" "\$skill_link"
-    echo "  ✓ skill ops-inspect → \$home_dir/skills/devops/"
+echo '=== 3/5 技能树 external_dirs 配置 (agent 可见) ==='
+# 插件 register_skill 的技能不进 <available_skills> 索引 (Hermes 设计),
+# 通过 config.yaml 的 skills.external_dirs 指向插件 skills 目录即可被扫描.
+SKILLS_DIR="\$DEFAULT_PLUGINS_DIR/\$PLUGIN_NAME/src/opsctl/plugin/skills"
+add_extdir() {
+    local cfg="\$1"
+    [ -f "\$cfg" ] || { echo "[WARN] \$cfg 不存在, 跳过"; return; }
+    python3 - "\$cfg" "\$SKILLS_DIR" << 'PY'
+import sys
+path, d = sys.argv[1], sys.argv[2]
+try:
+    import yaml
+    cfg = yaml.safe_load(open(path)) or {}
+    cfg.setdefault("skills", {}).setdefault("external_dirs", [])
+    if d not in cfg["skills"]["external_dirs"]:
+        cfg["skills"]["external_dirs"].append(d)
+    yaml.safe_dump(cfg, open(path, "w"), allow_unicode=True, sort_keys=False)
+    print("  ✓ " + path + " (yaml)")
+except ImportError:
+    # 无 pyyaml 的文本 fallback: 追加/复用 external_dirs 列表项
+    text = open(path).read()
+    if d in text:
+        print("  ✓ " + path + " (已存在)")
+        sys.exit(0)
+    lines = text.splitlines()
+    for i, ln in enumerate(lines):
+        stripped = ln.strip()
+        if not stripped.startswith("external_dirs:"):
+            continue
+        indent = ln[: len(ln) - len(ln.lstrip())]
+        inline = stripped[len("external_dirs:") :].strip()
+        if inline == "[]":
+            lines[i] = indent + "external_dirs:"
+            lines.insert(i + 1, indent + "  - " + d)
+            open(path, "w").write("\n".join(lines) + "\n")
+            print("  ✓ " + path + " (text-empty)")
+            sys.exit(0)
+        if inline == "":
+            j = i + 1
+            while j < len(lines) and lines[j].lstrip().startswith("-") \
+                    and len(lines[j]) - len(lines[j].lstrip()) > len(indent):
+                j += 1
+            lines.insert(j, indent + "  - " + d)
+            open(path, "w").write("\n".join(lines) + "\n")
+            print("  ✓ " + path + " (text)")
+            sys.exit(0)
+        print("[WARN] " + path + " external_dirs 为内联列表, 请手动添加: " + d)
+        sys.exit(0)
+    open(path, "a").write("\nskills:\n  external_dirs:\n    - " + d + "\n")
+    print("  ✓ " + path + " (text-append)")
+PY
 }
-link_skill "\$HOME/.hermes"
+add_extdir "\$HOME/.hermes/config.yaml"
 for p in \$PROFILES; do
     [ -z "\$p" ] && continue
-    link_skill "\$HOME/.hermes/profiles/\$p"
+    add_extdir "\$HOME/.hermes/profiles/\$p/config.yaml"
 done
 
 echo '=== 4/5 逐 profile 启用插件 ==='

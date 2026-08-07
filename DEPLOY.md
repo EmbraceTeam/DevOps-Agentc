@@ -175,7 +175,7 @@ Plugin 注册了 `/ops-inspect` slash 命令。在 Hermes 中告诉它：
 每天早上 9 点执行 /ops-inspect
 ```
 
-Hermes 会自动创建 Cron 定时任务，遍历所有资源的关注项并分级报告。
+Hermes 会自动创建 Cron 定时任务，检查窗口内（默认 30 天）到期的关注点，并按"需立即处理/需关注/其余折叠"三组报告。
 
 ## 升级
 

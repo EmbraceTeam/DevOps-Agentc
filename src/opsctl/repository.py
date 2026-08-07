@@ -27,10 +27,15 @@ def _now_iso() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds")
 
 
-def _parse_due_within(within: str) -> datetime:
+# d/h/m 各单位的窗口上限, 防 OverflowError (等价 3650 天)
+_WITHIN_LIMITS = {"d": 365 * 10, "h": 365 * 10 * 24, "m": 365 * 10 * 24 * 60}
+
+
+def _parse_due_within(within: str, *, now: datetime | None = None) -> datetime:
     """解析 `7d`/`12h`/`30m` 形式, 返回"现在 + N" 的 UTC datetime.
 
     拒绝负数与超大输入 (防 OverflowError 与"已逾期"误判).
+    可选 ``now`` 供调用方冻结时钟, 保证窗口过滤与排序/标注同一时刻.
     """
     if not isinstance(within, str) or len(within) < 2:
         raise ValueError(f"非法 --within 值 '{within}', 示例: 7d, 12h, 30m")
@@ -41,17 +46,48 @@ def _parse_due_within(within: str) -> datetime:
         raise ValueError(f"非法 --within 值 '{within}'") from exc
     if amount < 0:
         raise ValueError(f"--within 不允许负数 '{within}'")
-    if amount > 365 * 10 and unit == "d":
-        raise ValueError("--within 上限 3650d")
-    if unit == "d":
-        delta = timedelta(days=amount)
-    elif unit == "h":
-        delta = timedelta(hours=amount)
-    elif unit == "m":
-        delta = timedelta(minutes=amount)
-    else:
+    if unit not in _WITHIN_LIMITS:
         raise ValueError(f"非法 --within 单位 '{unit}', 支持 d/h/m (大小写不敏感)")
-    return datetime.now(UTC) + delta
+    if amount > _WITHIN_LIMITS[unit]:
+        raise ValueError(f"--within 上限 {_WITHIN_LIMITS[unit]}{unit}")
+    delta = {
+        "d": timedelta(days=amount),
+        "h": timedelta(hours=amount),
+        "m": timedelta(minutes=amount),
+    }[unit]
+    base = now if now is not None else datetime.now(UTC)
+    if base.tzinfo is None:
+        base = base.replace(tzinfo=UTC)
+    return base + delta
+
+
+def urgency_of(due_at: str | None, *, now: datetime | None = None) -> str:
+    """派生 urgency 标签: urgent=≤now+24h (含已过期), soon=≤now+7d, later=其余.
+
+    纯函数, 不改数据. due_at 为 None 或解析失败一律返回 ``later``;
+    naive 的 now/due_at 均视为 UTC. 阈值固定 24h/7d (spec 冻结).
+    """
+    if due_at is None:
+        return "later"
+    try:
+        dt = datetime.fromisoformat(due_at)
+    except (TypeError, ValueError):
+        return "later"
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=UTC)
+    else:
+        dt = dt.astimezone(UTC)
+    if now is None:
+        now = datetime.now(UTC)
+    elif now.tzinfo is None:
+        now = now.replace(tzinfo=UTC)
+    else:
+        now = now.astimezone(UTC)
+    if dt <= now + timedelta(hours=24):
+        return "urgent"
+    if dt <= now + timedelta(days=7):
+        return "soon"
+    return "later"
 
 
 # ---------- 资源 CRUD ----------
@@ -455,6 +491,10 @@ def relation_graph(conn: sqlite3.Connection, id_or_name: str) -> dict[str, Any]:
 
 VALID_SEVERITIES = frozenset({"info", "warning", "critical"})
 
+# 展示排序权重 (未知值一律 .get(..., 99) 防御, 脏数据不崩溃)
+_SEVERITY_ORDER = {"critical": 0, "warning": 1, "info": 2}
+_URGENCY_ORDER = {"urgent": 0, "soon": 1, "later": 2}
+
 
 def _normalize_due_at(due_at: str) -> str:
     """校验并归一化 due_at 为带 UTC 偏移的 ISO 字符串.
@@ -556,16 +596,33 @@ def resolve_concern(
     )
 
 
-def concerns_due(conn: sqlite3.Connection, within: str) -> list[Concern]:
-    """查询 within 时间窗口内到期的 open 关注点."""
-    threshold = _parse_due_within(within)
+def concerns_due(
+    conn: sqlite3.Connection, within: str, *, now: datetime | None = None
+) -> list[Concern]:
+    """查询 within 时间窗口内到期的 open 关注点, 按展示组连续排序.
+
+    展示组: 组1=critical|urgent 整体在前 (critical 永不落折叠段),
+    组2=soon 且非 critical, 组3=其余; 组内 urgency → severity → due_at 升序.
+    窗口过滤与排序/urgency 标注共享同一 ``now`` (冻结时钟结果确定).
+    """
+    threshold = _parse_due_within(within, now=now)
     rows = conn.execute(
         """SELECT * FROM concerns
            WHERE status = 'open' AND due_at IS NOT NULL AND due_at <= ?
            ORDER BY due_at""",
         (threshold.isoformat(timespec="seconds"),),
     ).fetchall()
-    return [
+
+    def _group(c: Concern) -> int:
+        sev_rank = _SEVERITY_ORDER.get(c.severity, 99)
+        urg_rank = _URGENCY_ORDER.get(urgency_of(c.due_at, now=now), 99)
+        if sev_rank == 0 or urg_rank == 0:
+            return 1
+        if urg_rank == 1:
+            return 2
+        return 3
+
+    items = [
         Concern(
             id=r["id"],
             resource_id=r["resource_id"],
@@ -578,3 +635,12 @@ def concerns_due(conn: sqlite3.Connection, within: str) -> list[Concern]:
         )
         for r in rows
     ]
+    items.sort(
+        key=lambda c: (
+            _group(c),
+            _URGENCY_ORDER.get(urgency_of(c.due_at, now=now), 99),
+            _SEVERITY_ORDER.get(c.severity, 99),
+            c.due_at or "",
+        )
+    )
+    return items

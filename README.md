@@ -92,7 +92,7 @@ Plugin handler 永远通过 subprocess 调 `opsctl --json`，与 CLI 解耦，CL
 
 ### 定时巡检（Hermes Cron）
 
-Plugin 注册了 `/ops-inspect` slash 命令，用于遍历所有资源的关注项并分级报告。要让它定时运行：
+Plugin 注册了 `/ops-inspect` slash 命令，用于检查窗口内（默认 30 天）到期的关注点，并按"需立即处理/需关注/其余折叠"三组报告。要让它定时运行：
 
 在 Hermes 中说一句**自然语言**，它就会记住 Cron 任务：
 

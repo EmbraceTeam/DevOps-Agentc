@@ -8,9 +8,71 @@ from __future__ import annotations
 import json
 from unittest.mock import patch
 
-from opsctl.plugin import register
+from opsctl.plugin import _handle_inspect, register
 from opsctl.plugin.schemas import PLUGIN_TOOLS
 from opsctl.plugin.tools import _run_opsctl, make_handler
+
+# 真实 UUID 形态的 resource_id, 确保测试断言渲染 name 而非 UUID
+_UUID_A = "3f8a2b1c-1a2b-3c4d-5e6f-7a8b9c0d1e2f"
+_UUID_B = "4f9c3d2e-2b3c-4d5e-6f70-8b9c0d1e2f30"
+_UUID_C = "5a0d4e3f-3c4d-5e6f-7081-9c0d1e2f3041"
+_UUID_D = "6b1e5f40-4d5e-6f70-8192-0d1e2f304152"
+
+
+def _fake_items() -> list[dict]:
+    """跨 urgency × severity 各档的到期项 (含 later+critical)."""
+    return [
+        {
+            "id": 1,
+            "resource": _UUID_A,
+            "name": "pg-main",
+            "category": "capacity",
+            "desc": "磁盘水位 92%",
+            "due": "2026-08-07T20:00:00+08:00",
+            "severity": "critical",
+            "urgency": "urgent",
+        },
+        {
+            "id": 2,
+            "resource": _UUID_B,
+            "name": "web-prod-1",
+            "category": "expiry",
+            "desc": "SSL 证书到期",
+            "due": "2026-08-07T15:00:00+08:00",
+            "severity": "warning",
+            "urgency": "urgent",
+        },
+        {
+            "id": 3,
+            "resource": _UUID_C,
+            "name": "redis-cache",
+            "category": "capacity",
+            "desc": "内存水位 85%",
+            "due": "2026-08-10",
+            "severity": "warning",
+            "urgency": "soon",
+        },
+        {
+            "id": 4,
+            "resource": _UUID_D,
+            "name": "api-gw",
+            "category": "expiry",
+            "desc": "证书 2027 到期",
+            "due": "2026-08-27",
+            "severity": "info",
+            "urgency": "later",
+        },
+        {
+            "id": 5,
+            "resource": _UUID_D,
+            "name": "etcd-1",
+            "category": "renewal",
+            "desc": "备份配额",
+            "due": "2026-08-28",
+            "severity": "info",
+            "urgency": "later",
+        },
+    ]
 
 
 class FakeCtx:
@@ -189,7 +251,15 @@ def test_delete_relation_cli_args_builds():
 
 def test_add_concern_cli_args_builds():
     fn = PLUGIN_TOOLS["ops_add_concern"]["cli_args"]
-    args = fn({"resource": "w1", "category": "expiry", "description": "test", "due": "2026-12-31", "severity": "critical"})
+    args = fn(
+        {
+            "resource": "w1",
+            "category": "expiry",
+            "description": "test",
+            "due": "2026-12-31",
+            "severity": "critical",
+        }
+    )
     assert "--resource" in args and "w1" in args
     assert "--due" in args and "2026-12-31" in args
     assert "--severity" in args and "critical" in args
@@ -199,3 +269,191 @@ def test_resolve_concern_cli_args_builds():
     fn = PLUGIN_TOOLS["ops_resolve_concern"]["cli_args"]
     args = fn({"id": 42})
     assert "42" in args
+
+
+# ---------- /ops-inspect _handle_inspect ----------
+
+
+def test_handle_inspect_three_groups_with_names():
+    """三组输出, 渲染 name 而非 UUID, 头部统计含 other 桶."""
+    items = _fake_items()
+    with patch("opsctl.plugin.tools._run_opsctl", return_value=items) as m:
+        out = _handle_inspect("--within 30d")
+    # 三组标题
+    assert "🔴 需立即处理" in out
+    assert "🟡 需关注" in out
+    assert "🔵 其余 2 项" in out  # 2 个 later 项折叠
+    # 渲染 name 而非 UUID: 全量组的条目逐条显示 name; 折叠组不逐条渲染
+    for it in items[:3]:
+        assert it["name"] in out
+    for it in items:
+        assert it["resource"] not in out
+    # 折叠组只有一行统计, 不逐条展开
+    assert "api-gw" not in out
+    assert "etcd-1" not in out
+    # 头部统计: critical=1, warning=2, info=2, other=0, 共 5
+    assert "critical=1" in out
+    assert "warning=2" in out
+    assert "info=2" in out
+    assert "other=0" in out
+    assert "共 5" in out
+    m.assert_called_once_with(["concern", "due", "--json", "--within", "30d"])
+
+
+def test_handle_inspect_zero_due_items():
+    with patch("opsctl.plugin.tools._run_opsctl", return_value=[]):
+        out = _handle_inspect("")
+    assert "无到期关注项" in out
+    assert "所有资源无 open 关注项" not in out
+
+
+def test_handle_inspect_window_space_form():
+    with patch("opsctl.plugin.tools._run_opsctl", return_value=_fake_items()) as m:
+        _handle_inspect("--within 7d")
+    assert m.call_args.args[0] == ["concern", "due", "--json", "--within", "7d"]
+
+
+def test_handle_inspect_window_equals_form():
+    with patch("opsctl.plugin.tools._run_opsctl", return_value=_fake_items()) as m:
+        _handle_inspect("--within=7d")
+    assert m.call_args.args[0] == ["concern", "due", "--json", "--within", "7d"]
+
+
+def test_handle_inspect_default_window_is_30d():
+    with patch("opsctl.plugin.tools._run_opsctl", return_value=[]) as m:
+        _handle_inspect("")
+    assert m.call_args.args[0] == ["concern", "due", "--json", "--within", "30d"]
+
+
+def test_handle_inspect_missing_within_value_reports_error():
+    with patch("opsctl.plugin.tools._run_opsctl") as m:
+        out = _handle_inspect("--within")
+    assert "巡检失败" in out
+    m.assert_not_called()
+
+
+def test_handle_inspect_invalid_window_goes_cli_error_path():
+    # 非法值由 CLI 返回 error dict -> 巡检失败消息
+    with patch(
+        "opsctl.plugin.tools._run_opsctl",
+        return_value={"error": "非法 --within 单位 'x', 支持 d/h/m (大小写不敏感)"},
+    ) as m:
+        out = _handle_inspect("--within 7x")
+    assert "巡检失败" in out
+    m.assert_called_once_with(["concern", "due", "--json", "--within", "7x"])
+
+
+def test_handle_inspect_shlex_unterminated_quote_defensive():
+    with patch("opsctl.plugin.tools._run_opsctl") as m:
+        out = _handle_inspect('--within "7d')
+    assert "巡检失败" in out
+    m.assert_not_called()
+
+
+def test_handle_inspect_non_str_args_defensive():
+    with patch("opsctl.plugin.tools._run_opsctl") as m:
+        out = _handle_inspect(None)  # type: ignore[arg-type]
+    assert "巡检失败" in out
+    m.assert_not_called()
+
+
+def test_handle_inspect_rejects_non_dict_items():
+    with patch("opsctl.plugin.tools._run_opsctl", return_value=[{"id": 1}, "oops"]):
+        out = _handle_inspect("")
+    assert "巡检失败: 返回项格式异常" in out
+
+
+def test_handle_inspect_empty_quoted_within_reports_error():
+    # --within "" (空值) 不得静默回退默认窗口
+    with patch("opsctl.plugin.tools._run_opsctl") as m:
+        out = _handle_inspect('--within ""')
+    assert "巡检失败" in out
+    m.assert_not_called()
+
+
+def test_handle_inspect_within_value_swallowed_by_flag_reports_error():
+    # --within 后跟 flag (--within --json) 报缺值, 不把 flag 当窗口值
+    with patch("opsctl.plugin.tools._run_opsctl") as m:
+        out = _handle_inspect("--within --json")
+    assert "巡检失败" in out
+    m.assert_not_called()
+
+
+def test_handle_inspect_duplicate_within_reports_error():
+    with patch("opsctl.plugin.tools._run_opsctl") as m:
+        out = _handle_inspect("--within 7d --within 30d")
+    assert "巡检失败" in out
+    m.assert_not_called()
+
+
+def test_handle_inspect_unknown_flag_reports_error():
+    # 近似拼写 (--Within=7d / --withinx) 不得静默忽略回退默认窗口
+    with patch("opsctl.plugin.tools._run_opsctl") as m:
+        out = _handle_inspect("--Within=7d")
+    assert "巡检失败" in out
+    m.assert_not_called()
+
+
+def test_handle_inspect_bare_value_reports_error():
+    # 裸值 (7d) 前无 flag, 报错而非静默忽略
+    with patch("opsctl.plugin.tools._run_opsctl") as m:
+        out = _handle_inspect("7d")
+    assert "巡检失败" in out
+    m.assert_not_called()
+
+
+def test_handle_inspect_rejects_non_list_result():
+    with patch("opsctl.plugin.tools._run_opsctl", return_value={"error": "opsctl 无输出"}):
+        out = _handle_inspect("")
+    assert "巡检失败" in out
+
+
+def test_handle_inspect_unknown_severity_goes_to_other_bucket():
+    items = [
+        {
+            "id": 1,
+            "resource": _UUID_A,
+            "name": "svc-a",
+            "desc": "未知 severity 但 urgent",
+            "due": "2026-08-07T10:00:00+00:00",
+            "severity": "fatal",
+            "urgency": "urgent",
+        }
+    ]
+    with patch("opsctl.plugin.tools._run_opsctl", return_value=items):
+        out = _handle_inspect("")
+    # fatal 计入 other 桶, 共 N = critical+warning+info+other
+    assert "other=1" in out
+    assert "共 1" in out
+    # urgent 规则 -> 🔴 组, 渲染 name
+    assert "🔴 需立即处理" in out
+    assert "svc-a" in out
+    assert _UUID_A not in out
+
+
+def test_handle_inspect_missing_urgency_key_defensive():
+    items = [
+        {
+            "id": 1,
+            "resource": _UUID_A,
+            "name": "svc-a",
+            "desc": "缺 urgency 且 info",
+            "due": "2026-08-27",
+            "severity": "info",
+        },
+        {
+            "id": 2,
+            "resource": _UUID_B,
+            "name": "svc-b",
+            "desc": "缺 urgency 但 critical",
+            "due": "2026-08-27",
+            "severity": "critical",
+        },
+    ]
+    with patch("opsctl.plugin.tools._run_opsctl", return_value=items):
+        out = _handle_inspect("")
+    # 缺 urgency 按 later 归组: svc-a -> 🔵, svc-b (critical) -> 🔴
+    assert "🔴 需立即处理" in out
+    assert "svc-b" in out
+    assert "🔵 其余 1 项" in out
+    assert "共 2" in out

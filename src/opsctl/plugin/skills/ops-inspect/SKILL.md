@@ -1,47 +1,59 @@
 # ops-inspect — 统一运维巡检
 
-遍历每个已登记资源，逐个检查其 open 关注项，汇总报告。
+检查时间窗口内到期的关注点, 按"需立即处理 / 需关注 / 其余折叠"三组汇总报告。
+格式规范**渠道无关** — 飞书/钉钉/企业微信/邮件等任何推送渠道统一遵守同一分组结构。
 
 ## 流程
 
-1. **列出全部资源** — 调用 `ops_list_resources` 获取清单
-2. **遍历每个资源** — 对每个资源调用 `ops_list_concerns --resource <name>` 查看其 open 关注项
-3. **分级报告** — 按 severity 排序输出 (critical → warning → info)
-4. **汇总统计** — 最后给出总数和分类统计
+1. **查询到期关注点** — 调用 `ops_concerns_due --within 30d --json` 获取窗口内到期的 open 关注点 (默认窗口 30d, 可按需调整, 如 `--within 7d`)
+2. **禁止逐资源遍历** — 不要对每个资源调用 `ops_list_concerns`; 窗口过滤与排序由数据层完成
+3. **三组报告** — 按展示组分三组输出, **组内顺序已由数据层排定, 勿重排** (组1=critical|urgent → 组2=soon非critical → 组3=其余)
+4. **零到期项** — 窗口内无到期项时输出"无到期项, 不推送", 不生成通知
 
 ## 报告格式
 
 ```text
-## 统一巡检结果 (YYYY-MM-DD HH:MM UTC)
+🕐 运维巡检 2026-08-07 · 共 12 项到期: critical=1, warning=4, info=7, other=0
 
-**资源总数**: N
+🔴 需立即处理 (2)
+- pg-main — 磁盘水位 92% — 到期: 2026-08-07T12:00:00+00:00
+- web-prod-1 — SSL 证书到期 — 到期: 2026-08-07T07:00:00+00:00
 
-### 🔴 Critical
-- [资源名] — [描述] — 到期: [due_at]
-### 🟡 Warning
-- [资源名] — [描述] — 到期: [due_at]
-### 🔵 Info
-- [资源名] — [描述] — 到期: [due_at]
+🟡 需关注 (3)
+- redis-cache — 内存水位 85% — 到期: 2026-08-09T16:00:00+00:00
+- ...
 
-**统计**: critical=N, warning=N, info=N, total=N
+🔵 其余 7 项 (折叠)
 ```
+
+规则:
+
+- **🔴 需立即处理** — urgency=`urgent` 或 severity=`critical` 的项, 全量列出 (critical 永不落入折叠段)
+- **🟡 需关注** — urgency=`soon` 且非 critical 的项, 全量列出
+- **🔵 其余** — 其余项折叠为一行统计: `🔵 其余 N 项 (折叠)`
+- **空组省略** — 某组无内容则整组不输出
+- **头部统计行** — `共 N 项到期: critical=…, warning=…, info=…, other=…` (other 为未知 severity 桶), 统计与分组数字必须自洽 (critical 全部在 🔴 组, 分类和 = 共 N)
+- **条目用资源 `name` 字段** (可读名, 非 id/UUID)
+- **due 时间戳** 直接使用数据层返回的 UTC 格式 (`2026-08-07T12:00:00+00:00`), 勿自行转换时区
 
 ## 示例
 
-资源列表: web-prod-1 (ecs), pg-main (postgres), redis-cache (redis)
-
-执行:
-
-1. `ops_list_concerns --resource web-prod-1` → [open: SSL 证书到期]
-2. `ops_list_concerns --resource pg-main` → [open: 磁盘水位 80%]
-3. `ops_list_concerns --resource redis-cache` → [空]
-
-报告:
+调用 `ops_concerns_due --within 30d --json` 返回 12 项 (critical=1, warning=4, info=7)。
+其中 🔴 2 项 (1 critical + 1 urgent)、🟡 3 项、🔵 7 项 (2+3+7=12):
 
 ```text
-### 🔴 Critical
-- web-prod-1 — SSL 证书到期 — 到期: 2026-08-01
+🕐 运维巡检 2026-08-07 · 共 12 项到期: critical=1, warning=4, info=7, other=0
 
-### 🟡 Warning
-- pg-main — 磁盘水位 80% — 到期: 2026-08-15
+🔴 需立即处理 (2)
+- pg-main — 磁盘水位 92% — 到期: 2026-08-07T12:00:00+00:00
+- web-prod-1 — SSL 证书到期 — 到期: 2026-08-07T07:00:00+00:00
+
+🟡 需关注 (3)
+- redis-cache — 内存水位 85% — 到期: 2026-08-09T16:00:00+00:00
+- k8s-prod — Pod 重启次数偏高 — 到期: 2026-08-11T16:00:00+00:00
+- keycloak-1 — 会话清理 — 到期: 2026-08-12T16:00:00+00:00
+
+🔵 其余 7 项 (折叠)
 ```
+
+窗口内无到期项时: 输出"无到期项, 不推送"。

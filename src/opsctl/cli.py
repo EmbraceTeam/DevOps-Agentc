@@ -10,6 +10,7 @@ from __future__ import annotations
 import json as json_lib
 from collections.abc import Iterator
 from contextlib import contextmanager
+from datetime import UTC, datetime
 from typing import Annotated
 
 import typer
@@ -538,21 +539,26 @@ def concern_due(
     within: Annotated[str, typer.Option("--within", help="时间窗口: 7d/12h/30m")],
     json_output: JsonOption = False,
 ) -> None:
-    """查询即将到期的 open 关注点."""
+    """查询即将到期的 open 关注点 (按展示组连续排序, 含派生 urgency)."""
     _set_json(json_output)
+    now = datetime.now(UTC)
     try:
         with _db() as conn:
-            items = repo.concerns_due(conn, within=within)
+            items = repo.concerns_due(conn, within=within, now=now)
+            # resource_id (UUID) -> 可读资源名映射, 供 name 键与人类表格使用
+            names = {r["id"]: r["name"] for r in repo.list_resources(conn)}
     except ValueError as e:
         _fail(str(e))
     data = [
         {
             "id": c.id,
             "resource": c.resource_id,
+            "name": names.get(c.resource_id, c.resource_id),
             "category": c.category,
             "desc": c.description,
             "due": c.due_at,
             "severity": c.severity,
+            "urgency": repo.urgency_of(c.due_at, now=now),
         }
         for c in items
     ]
@@ -563,10 +569,12 @@ def concern_due(
         console.print(f"[dim]{within} 内无到期关注点[/dim]")
         return
     table = Table(title=f"{within} 内到期关注点")
-    for col in ("id", "resource", "due", "severity", "desc"):
+    for col in ("id", "name", "urgency", "due", "severity", "desc"):
         table.add_column(col)
     for c in data:
-        table.add_row(str(c["id"]), c["resource"], str(c["due"]), c["severity"], c["desc"])
+        table.add_row(
+            str(c["id"]), c["name"], c["urgency"], str(c["due"]), c["severity"], c["desc"]
+        )
     console.print(table)
 
 

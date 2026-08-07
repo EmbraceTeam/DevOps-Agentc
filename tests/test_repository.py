@@ -285,3 +285,195 @@ def test_relation_graph_handles_cycle_gracefully(conn):
     # 不应无限递归 / 不抛 RecursionError
     tree = repo.relation_graph(conn, "a")
     assert tree["resource"]["name"] == "a"
+
+
+# ---------- urgency_of 分类边界 ----------
+
+
+def test_urgency_of_boundaries():
+    now = datetime(2026, 8, 7, 12, 0, 0, tzinfo=UTC)
+    # 已过期 -> urgent
+    assert repo.urgency_of((now - timedelta(hours=1)).isoformat(), now=now) == "urgent"
+    # 恰好 24h -> urgent (边界含等号)
+    assert repo.urgency_of((now + timedelta(hours=24)).isoformat(), now=now) == "urgent"
+    # 恰好 7d -> soon (边界含等号)
+    assert repo.urgency_of((now + timedelta(days=7)).isoformat(), now=now) == "soon"
+    # 窗口内远期 -> later
+    assert repo.urgency_of((now + timedelta(days=20)).isoformat(), now=now) == "later"
+
+
+def test_urgency_of_none_and_unparsable_are_later():
+    now = datetime(2026, 8, 7, 12, 0, 0, tzinfo=UTC)
+    assert repo.urgency_of(None, now=now) == "later"
+    assert repo.urgency_of("not-a-date", now=now) == "later"
+    assert repo.urgency_of("", now=now) == "later"
+
+
+def test_urgency_of_naive_values_treated_as_utc():
+    # naive now 与 naive due_at 均视为 UTC, 差值按 UTC 计算
+    now = datetime(2026, 8, 7, 12, 0, 0)  # naive
+    assert repo.urgency_of("2026-08-08T12:00:00", now=now) == "urgent"  # 恰好 24h
+    assert repo.urgency_of("2026-08-14T12:00:00", now=now) == "soon"  # 恰好 7d
+    assert repo.urgency_of("2026-08-27T12:00:00", now=now) == "later"  # 20d
+    # aware now + naive due_at 混合
+    aware = datetime(2026, 8, 7, 12, 0, 0, tzinfo=UTC)
+    assert repo.urgency_of("2026-08-08T12:00:00", now=aware) == "urgent"
+
+
+def test_urgency_of_offset_due_at():
+    now = datetime(2026, 8, 7, 12, 0, 0, tzinfo=UTC)
+    # +08:00 的 20:00 = UTC 12:00, 恰好 24h -> urgent
+    assert repo.urgency_of("2026-08-08T20:00:00+08:00", now=now) == "urgent"
+
+
+def test_urgency_of_default_now_is_utc():
+    # 不传 now 也应是 aware UTC (不抛异常, 返回合法值)
+    assert repo.urgency_of("2026-08-07T12:00:00+00:00") in ("urgent", "soon", "later")
+
+
+# ---------- concerns_due 展示组连续排序 ----------
+
+
+def _due_iso(now: datetime, hours: int) -> str:
+    return (now + timedelta(hours=hours)).isoformat(timespec="seconds")
+
+
+def test_concerns_due_sorts_by_display_groups(conn):
+    """I/O 矩阵: urgent+info / soon+critical / later+critical / soon+info 组连续."""
+    _add_ecs(conn, "web1")
+    now = datetime(2026, 8, 7, 12, 0, 0, tzinfo=UTC)
+    repo.add_concern(
+        conn,
+        resource="web1",
+        category="x",
+        description="urgent-info",
+        due_at=_due_iso(now, 20),
+        severity="info",
+    )
+    repo.add_concern(
+        conn,
+        resource="web1",
+        category="x",
+        description="soon-critical",
+        due_at=_due_iso(now, 24 * 3),
+        severity="critical",
+    )
+    repo.add_concern(
+        conn,
+        resource="web1",
+        category="x",
+        description="later-critical",
+        due_at=_due_iso(now, 24 * 20),
+        severity="critical",
+    )
+    repo.add_concern(
+        conn,
+        resource="web1",
+        category="x",
+        description="soon-info",
+        due_at=_due_iso(now, 24 * 5),
+        severity="info",
+    )
+    items = repo.concerns_due(conn, within="30d", now=now)
+    assert [c.description for c in items] == [
+        "urgent-info",  # 组1: urgent
+        "soon-critical",  # 组1: critical
+        "later-critical",  # 组1: later+critical 提前到组1末尾, 不落折叠段
+        "soon-info",  # 组2: soon 非 critical
+    ]
+
+
+def test_concerns_due_group3_lands_last(conn):
+    """组3 (later 非 critical) 落在数组末尾."""
+    _add_ecs(conn, "web1")
+    now = datetime(2026, 8, 7, 12, 0, 0, tzinfo=UTC)
+    repo.add_concern(
+        conn,
+        resource="web1",
+        category="x",
+        description="later-info",
+        due_at=_due_iso(now, 24 * 20),
+        severity="info",
+    )
+    repo.add_concern(
+        conn,
+        resource="web1",
+        category="x",
+        description="soon-info",
+        due_at=_due_iso(now, 24 * 5),
+        severity="info",
+    )
+    items = repo.concerns_due(conn, within="30d", now=now)
+    assert [c.description for c in items] == ["soon-info", "later-info"]
+
+
+def test_concerns_due_group1_keeps_inner_order(conn):
+    """组1 内: urgency (urgent→soon→later) → severity → due_at."""
+    _add_ecs(conn, "web1")
+    now = datetime(2026, 8, 7, 12, 0, 0, tzinfo=UTC)
+    repo.add_concern(
+        conn,
+        resource="web1",
+        category="x",
+        description="later-critical",
+        due_at=_due_iso(now, 24 * 20),
+        severity="critical",
+    )
+    repo.add_concern(
+        conn,
+        resource="web1",
+        category="x",
+        description="soon-critical",
+        due_at=_due_iso(now, 24 * 3),
+        severity="critical",
+    )
+    repo.add_concern(
+        conn,
+        resource="web1",
+        category="x",
+        description="urgent-critical",
+        due_at=_due_iso(now, 10),
+        severity="critical",
+    )
+    items = repo.concerns_due(conn, within="30d", now=now)
+    assert [c.description for c in items] == [
+        "urgent-critical",
+        "soon-critical",
+        "later-critical",
+    ]
+
+
+def test_concerns_due_does_not_crash_on_invalid_severity(conn):
+    """schema 对 severity 无约束, 脏数据不崩溃 (排序键 .get 防御)."""
+    _add_ecs(conn, "web1")
+    now = datetime(2026, 8, 7, 12, 0, 0, tzinfo=UTC)
+    c = repo.add_concern(
+        conn,
+        resource="web1",
+        category="x",
+        description="bad-sev",
+        due_at=_due_iso(now, 10),
+    )
+    conn.execute("UPDATE concerns SET severity='fatal' WHERE id=?", (c.id,))
+    items = repo.concerns_due(conn, within="7d", now=now)
+    assert len(items) == 1
+    assert items[0].severity == "fatal"
+
+
+def test_parse_due_within_accepts_frozen_now():
+    now = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
+    assert repo._parse_due_within("7d", now=now) == now + timedelta(days=7)
+    assert repo._parse_due_within("12h", now=now) == now + timedelta(hours=12)
+    assert repo._parse_due_within("30m", now=now) == now + timedelta(minutes=30)
+
+
+def test_parse_due_within_rejects_huge_hours_and_minutes():
+    """h/m 单位补上限 (87600h / 5256000m = 3650d), 超限报 ValueError."""
+    with pytest.raises(ValueError):
+        repo._parse_due_within("87601h")
+    with pytest.raises(ValueError):
+        repo._parse_due_within("5256001m")
+    now = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
+    # 上限值本身合法
+    assert repo._parse_due_within("87600h", now=now) == now + timedelta(days=3650)
+    assert repo._parse_due_within("5256000m", now=now) == now + timedelta(days=3650)

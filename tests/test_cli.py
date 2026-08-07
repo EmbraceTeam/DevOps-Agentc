@@ -491,3 +491,133 @@ def test_concern_resolve_not_found(runner):
     res = runner.invoke(app, ["concern", "resolve", "--json", "99999"])
     assert res.exit_code == 1
     assert "error" in json.loads(res.output)
+
+
+# ---------- concern due: urgency/name 契约 ----------
+
+
+def test_concern_due_json_has_urgency_and_name(runner):
+    from datetime import UTC, datetime, timedelta
+
+    res = _add_ecs(runner, name="w1")
+    rid = res["id"]
+    assert len(rid) == 36  # UUID 形态
+    now = datetime.now(UTC)
+    # urgent (10h 内) + critical
+    runner.invoke(
+        app,
+        [
+            "concern",
+            "add",
+            "--json",
+            "--resource",
+            "w1",
+            "--category",
+            "expiry",
+            "--desc",
+            "SSL",
+            "--due",
+            (now + timedelta(hours=10)).isoformat(),
+            "--severity",
+            "critical",
+        ],
+    )
+    # later (20d)
+    runner.invoke(
+        app,
+        [
+            "concern",
+            "add",
+            "--json",
+            "--resource",
+            "w1",
+            "--category",
+            "renewal",
+            "--desc",
+            "续费",
+            "--due",
+            (now + timedelta(days=20)).isoformat(),
+        ],
+    )
+    out = runner.invoke(app, ["concern", "due", "--json", "--within", "30d"])
+    assert out.exit_code == 0, out.output
+    items = json.loads(out.output)
+    assert len(items) == 2
+    for it in items:
+        assert "urgency" in it and it["urgency"] in ("urgent", "soon", "later")
+        assert "name" in it
+        # name 是资源可读名, 非 UUID
+        assert it["name"] == "w1"
+        assert it["name"] != it["resource"]
+        assert it["resource"] == rid
+    # 组连续: 组1 (critical|urgent) 整体在前
+    assert items[0]["desc"] == "SSL"
+    assert items[0]["urgency"] == "urgent" and items[0]["severity"] == "critical"
+    assert items[1]["desc"] == "续费"
+    assert items[1]["urgency"] == "later"
+
+
+def test_concern_due_human_table_shows_name_and_urgency(runner):
+    from datetime import UTC, datetime, timedelta
+
+    _add_ecs(runner, name="w1")
+    now = datetime.now(UTC)
+    runner.invoke(
+        app,
+        [
+            "concern",
+            "add",
+            "--json",
+            "--resource",
+            "w1",
+            "--category",
+            "expiry",
+            "--desc",
+            "SSL",
+            "--due",
+            (now + timedelta(hours=10)).isoformat(),
+            "--severity",
+            "critical",
+        ],
+    )
+    out = runner.invoke(app, ["concern", "due", "--within", "30d"])
+    assert out.exit_code == 0, out.output
+    assert "w1" in out.output
+    assert "urgent" in out.output
+
+
+def test_concern_due_json_tolerates_invalid_severity(runner):
+    import os
+    import sqlite3
+    from datetime import UTC, datetime, timedelta
+
+    _add_ecs(runner, name="w1")
+    now = datetime.now(UTC)
+    runner.invoke(
+        app,
+        [
+            "concern",
+            "add",
+            "--json",
+            "--resource",
+            "w1",
+            "--category",
+            "x",
+            "--desc",
+            "bad",
+            "--due",
+            (now + timedelta(hours=5)).isoformat(),
+        ],
+    )
+    # 直接写库制造非法 severity (schema 无约束)
+    conn = sqlite3.connect(os.environ["OPSCTL_DB"])
+    conn.execute("UPDATE concerns SET severity='fatal' WHERE description='bad'")
+    conn.commit()
+    conn.close()
+    out = runner.invoke(app, ["concern", "due", "--json", "--within", "7d"])
+    assert out.exit_code == 0, out.output
+    items = json.loads(out.output)
+    assert len(items) == 1
+    assert items[0]["severity"] == "fatal"
+    assert items[0]["urgency"] in ("urgent", "soon", "later")
+    assert items[0]["name"] == "w1"

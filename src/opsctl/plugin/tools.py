@@ -8,16 +8,26 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+import sys
 from collections.abc import Callable
+from pathlib import Path
 
 
 def _opsctl_binary() -> str:
-    """定位 opsctl 可执行文件, 允许环境变量覆盖."""
+    """定位 opsctl 可执行文件, 允许环境变量覆盖.
+
+    目录插件模式下优先使用插件仓库内 shim (``bin/opsctl_shim.py``, CLI 随
+    插件 git 更新), 退回 PATH 中的 opsctl (pip 独立安装的 CLI).
+    """
     import os
 
     override = os.environ.get("OPSCTL_BINARY")
     if override:
         return override
+    # 插件仓库根 = tools.py 上溯 3 级 (src/opsctl/plugin/tools.py → 仓库根)
+    shim = Path(__file__).resolve().parents[3] / "bin" / "opsctl_shim.py"
+    if shim.is_file():
+        return str(shim)
     found = shutil.which("opsctl")
     if found:
         return found
@@ -31,7 +41,11 @@ def _run_opsctl(argv: list[str]) -> dict:
     任何进程级异常或非零退出都包装成 ``{"error": "..."}`` 返回给 LLM.
     """
     binary = _opsctl_binary()
-    cmd = [binary, *argv]
+    if binary.endswith(".py"):
+        # 目录插件 shim: 用当前进程 (Hermes venv) 的 Python 执行
+        cmd = [sys.executable, binary, *argv]
+    else:
+        cmd = [binary, *argv]
     try:
         proc = subprocess.run(
             cmd,

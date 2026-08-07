@@ -2,112 +2,72 @@
 
 ## 环境要求
 
-- Hermes Agent（已部署运行）
-- Python 3.11+
-- `scp` + `ssh` 访问 Hermes 服务器
+- Hermes Agent（已部署运行，支持 `hermes plugins` 子命令）
+- Hermes 服务器可访问 opsctl 的 Git 仓库（Codeup）
+- Python 3.11+（CLI 终端使用，可选）
+
+## 部署架构
+
+opsctl 以 **Hermes 目录插件** 形态分发：本仓库即插件源，`hermes plugins install`
+克隆到 `~/.hermes/plugins/opsctl-plugin/`。CLI 源码（`src/opsctl`）随仓库一起分发，
+插件 handler 通过 `bin/opsctl_shim.py` 调用仓库内 CLI —— **`hermes plugins update`
+一条命令同时更新插件与 CLI**，无需再手动打包上传 wheel。
 
 ## 快速部署
 
-### 一步部署（推荐）
-
-在本机项目目录运行：
+在 Hermes 服务器上执行：
 
 ```bash
-bash deploy.sh
+# 1. 安装插件 (克隆本仓库到 ~/.hermes/plugins/opsctl-plugin/)
+hermes plugins install https://github.com/<your-org>/DevOps-Agent.git
+
+# 2. 一次性安装 CLI 依赖 (Hermes venv)
+$HERMES_VENV/bin/pip install typer rich
+
+# 3. 启用插件
+hermes plugins enable opsctl-plugin
+
+# 4. 重启 Hermes
+hermes gateway restart
 ```
 
-脚本会：
+> `$HERMES_VENV` 是 Hermes 的虚拟环境路径（如 `/home/<user>/.hermes/hermes-agent/venv`）。
+> 安装后 Hermes 会渲染 `after-install.md` 提示上述步骤。
 
-1. 打包 opsctl wheel
-2. 询问 Hermes 服务器地址
-3. 上传 wheel 和 SOUL.md 到服务器
-4. 安装 opsctl
-5. 启用 Hermes Plugin
-6. 安装运维工程师角色提示词（SOUL.md）
+### 终端 CLI（可选）
 
-### 手动部署
-
-如果 `deploy.sh` 不适用，按以下步骤手动操作：
-
-#### 1. 打包
+如需在服务器终端直接使用 `opsctl` 命令：
 
 ```bash
-cd /path/to/DevOps-Agent
-uv build --wheel
-```
-
-生成文件：`dist/opsctl-0.1.0-py3-none-any.whl`
-
-#### 2. 上传到服务器
-
-```bash
-scp dist/opsctl-0.1.0-py3-none-any.whl \
-    src/opsctl/plugin/contexts/ops-engineer/SOUL.md \
-    user@server:~/
-```
-
-#### 3. 安装 opsctl
-
-SSH 登录服务器后：
-
-```bash
-# Hermes 虚拟环境安装（使 Plugin 可用）
-HERMES_VENV="/home/<user>/.hermes/hermes-agent/venv"
-$HERMES_VENV/bin/pip install --break-system-packages --no-deps --force-reinstall ~/opsctl-0.1.0-py3-none-any.whl
-
-# 系统环境安装（使 CLI 可用）
 pip3 install --break-system-packages --ignore-installed ~/opsctl-0.1.0-py3-none-any.whl
+# 或从仓库安装: pip install git+https://github.com/<your-org>/DevOps-Agent.git
 ```
 
-#### 4. 部署巡检技能
+## 升级
 
 ```bash
-# skills 目录需要手动部署（不在 wheel 中）
-# 将项目中的 skills 目录复制到 Plugin 目录
-PLUGIN_DIR=$(find $HERMES_VENV/lib -path "*/opsctl/plugin" -type d)
-cp -r /path/to/src/opsctl/plugin/skills $PLUGIN_DIR/
-```
-
-#### 5. 配置 Hermes Plugin
-
-编辑 `~/.hermes/config.yaml`：
-
-```yaml
-plugins:
-  enabled: [opsctl]
-```
-
-各 profile 的配置文件：
-
-- `ops` profile: `/home/<user>/.hermes/profiles/ops/config.yaml`
-- `eog` profile: `/home/<user>/.hermes/profiles/eog/config.yaml`
-
-#### 6. 安装角色提示词（可选）
-
-```bash
-# ops profile
-cp ~/SOUL.md /home/<user>/.hermes/profiles/ops/SOUL.md
-
-# eog profile
-cp ~/SOUL.md /home/<user>/.hermes/profiles/eog/SOUL.md
-```
-
-#### 7. 重启 Hermes
-
-```bash
-# ops profile
-hermes --profile ops gateway restart
-
-# eog profile
-hermes --profile eog gateway restart
+hermes plugins update opsctl-plugin   # git pull, 插件 + CLI 一次更新
+hermes gateway restart                # 重启生效
 ```
 
 ## 验证部署
 
-### 检查 opsctl CLI
+### 检查 Plugin 加载
 
 ```bash
-opsctl resource types
+hermes plugins list
+```
+
+输出中应包含：
+
+```text
+opsctl-plugin | enabled | 0.1.0 | 运维资源元数据管理 CLI — 资源清单/凭据/依赖/关注点 (Hermes 插件)
+```
+
+### 检查 CLI（经 shim）
+
+```bash
+python3 ~/.hermes/plugins/opsctl-plugin/bin/opsctl_shim.py resource types
 ```
 
 应输出 12 种资源类型：
@@ -125,18 +85,6 @@ mysql
 postgres
 redis
 service
-```
-
-### 检查 Plugin 加载
-
-```bash
-hermes plugins list
-```
-
-输出中应包含：
-
-```text
-opsctl   | enabled | 0.1.0 | 运维资源元数据管理 CLI | entrypoint
 ```
 
 ### 测试工具调用
@@ -177,34 +125,54 @@ Plugin 注册了 `/ops-inspect` slash 命令。在 Hermes 中告诉它：
 
 Hermes 会自动创建 Cron 定时任务，检查窗口内（默认 30 天）到期的关注点，并按"需立即处理/需关注/其余折叠"三组报告。
 
-## 升级
+## 从旧版（pip entry-point 插件）迁移
 
-重复上述部署步骤即可。`--force-reinstall` 会覆盖旧版本。重启 Hermes 后生效。
+旧版通过 `hermes_agent.plugins` entry point 分发，升级到目录插件形态：
+
+```bash
+# 1. 卸载旧 pip 包 (移除 entry point, 避免双插件冲突)
+$HERMES_VENV/bin/pip uninstall opsctl
+
+# 2. 按"快速部署"安装目录插件
+hermes plugins install https://github.com/<your-org>/DevOps-Agent.git
+$HERMES_VENV/bin/pip install typer rich
+hermes plugins enable opsctl-plugin
+
+# 3. 移除旧配置项 (若存在)
+#    编辑 ~/.hermes/config.yaml, 将 plugins.enabled 中的 opsctl 改为 opsctl-plugin
+
+# 4. 重启
+hermes gateway restart
+```
 
 ## 常见问题
 
-**Q: Plugin 加载失败，日志显示 `Failed to load plugin 'opsctl'`**
+**Q: Plugin 加载失败，日志显示 `Failed to load plugin 'opsctl-plugin'`**
 
-A: 检查 opsctl 是否已安装到 Hermes 的虚拟环境中：
+A: 检查插件目录是否完整：
 
 ```bash
-$HERMES_VENV/bin/pip list | grep opsctl
+ls ~/.hermes/plugins/opsctl-plugin/   # 应有 plugin.yaml 和 __init__.py
 ```
 
-如未安装，重复步骤 3。
+如不完整，`hermes plugins install --force <git-url>` 重装。
+
+**Q: 工具调用报 `调用 opsctl 失败: [Errno 2] No such file or directory`**
+
+A: Hermes venv 缺少 typer/rich，或 shim 路径异常。先验证 shim：
+
+```bash
+$HERMES_VENV/bin/python ~/.hermes/plugins/opsctl-plugin/bin/opsctl_shim.py resource types
+```
 
 **Q: Agent 说找不到 `ops_delete_relation` 等工具**
 
 A: 确认 Hermes gateway 已重启（旧进程可能还在跑旧代码）：
 
 ```bash
-hermes --profile ops gateway restart
+hermes gateway restart
 ```
 
-**Q: opsctl CLI 显示的类型数量不对**
+**Q: 更新后工具行为没变化**
 
-A: 可能是系统级安装版本过旧，重新安装：
-
-```bash
-pip3 install --break-system-packages --ignore-installed ~/opsctl-0.1.0-py3-none-any.whl
-```
+A: `hermes plugins update` 后必须重启 gateway 才生效。

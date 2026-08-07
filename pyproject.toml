@@ -24,9 +24,9 @@ dev = [
 [project.scripts]
 opsctl = "opsctl.cli:main"
 
-# Hermes Plugin 自动发现入口
-[project.entry-points."hermes_agent.plugins"]
-opsctl = "opsctl.plugin"
+# 注: Hermes 插件集成走目录插件通道 (仓库根 plugin.yaml + __init__.py),
+# 不再注册 hermes_agent.plugins entry point, 避免与目录插件双通道冲突.
+# 安装: hermes plugins install <git-url>; 更新: hermes plugins update opsctl-plugin
 
 [tool.setuptools.packages.find]
 where = ["src"]

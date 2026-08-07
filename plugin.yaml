@@ -1,0 +1,4 @@
+name: opsctl-plugin
+version: "0.1.0"
+description: 运维资源元数据管理 CLI — 资源清单/凭据/依赖/关注点 (Hermes 插件)
+manifest_version: 1

@@ -6,11 +6,14 @@
 from __future__ import annotations
 
 import json
+import os
+import sys
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from opsctl.plugin import _handle_inspect, register
 from opsctl.plugin.schemas import PLUGIN_TOOLS
-from opsctl.plugin.tools import _run_opsctl, make_handler
+from opsctl.plugin.tools import _opsctl_binary, _run_opsctl, make_handler
 
 # 真实 UUID 形态的 resource_id, 确保测试断言渲染 name 而非 UUID
 _UUID_A = "3f8a2b1c-1a2b-3c4d-5e6f-7a8b9c0d1e2f"
@@ -457,3 +460,53 @@ def test_handle_inspect_missing_urgency_key_defensive():
     assert "svc-b" in out
     assert "🔵 其余 1 项" in out
     assert "共 2" in out
+
+
+# ---- 目录插件 shim 定位与调用 (方案 A′: 插件自包含 CLI) ----
+
+
+def test_opsctl_binary_prefers_repo_shim():
+    """仓库内 bin/opsctl_shim.py 存在时优先返回 (CLI 随插件 git 更新)."""
+    with patch.dict(os.environ, {}, clear=True):
+        with patch("opsctl.plugin.tools.shutil.which", return_value="/usr/bin/opsctl"):
+            binary = _opsctl_binary()
+    assert binary.endswith("bin/opsctl_shim.py")
+
+
+def test_opsctl_binary_falls_back_to_path_when_no_shim():
+    """无仓库 shim 时退回 PATH 中的 opsctl (pip 独立安装)."""
+    with patch.dict(os.environ, {}, clear=True):
+        with patch("opsctl.plugin.tools.shutil.which", return_value="/usr/bin/opsctl"):
+            with patch("pathlib.Path.is_file", return_value=False):
+                assert _opsctl_binary() == "/usr/bin/opsctl"
+
+
+def test_opsctl_binary_env_override_wins():
+    """OPSCTL_BINARY 环境变量覆盖一切定位逻辑."""
+    with patch.dict(os.environ, {"OPSCTL_BINARY": "/custom/opsctl"}, clear=True):
+        assert _opsctl_binary() == "/custom/opsctl"
+
+
+def test_run_opsctl_uses_sys_executable_for_py_shim():
+    """.py shim 用当前进程 Python 执行 (Hermes venv)."""
+    with patch("opsctl.plugin.tools._opsctl_binary", return_value="/tmp/opsctl_shim.py"):
+        with patch("opsctl.plugin.tools.subprocess.run") as m:
+            m.return_value = SimpleNamespace(returncode=0, stdout='{"ok": true}', stderr="")
+            result = _run_opsctl(["resource", "list", "--json"])
+    assert result == {"ok": True}
+    cmd = m.call_args.args[0]
+    assert cmd[0] == sys.executable
+    assert cmd[1] == "/tmp/opsctl_shim.py"
+    assert cmd[2:] == ["resource", "list", "--json"]
+
+
+def test_run_opsctl_uses_binary_directly_for_exe():
+    """非 .py 可执行文件直接调用 (不经过 sys.executable)."""
+    with patch("opsctl.plugin.tools._opsctl_binary", return_value="/usr/bin/opsctl"):
+        with patch("opsctl.plugin.tools.subprocess.run") as m:
+            m.return_value = SimpleNamespace(returncode=0, stdout="[]", stderr="")
+            result = _run_opsctl(["resource", "list", "--json"])
+    assert result == []
+    cmd = m.call_args.args[0]
+    assert cmd[0] == "/usr/bin/opsctl"
+    assert cmd[1:] == ["resource", "list", "--json"]

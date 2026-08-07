@@ -15,11 +15,13 @@
 # 开发模式
 pip install -e ".[dev]"
 
-# 普通安装
+# 普通安装 (仅 CLI, 终端使用)
 pip install .
 ```
 
 数据默认写入 `data/opsctl.db`（不进 git）。可用 `OPSCTL_DB` 环境变量覆盖路径。
+
+> Hermes 插件集成不走 pip, 见下方 [Hermes Plugin 集成](#hermes-plugin-集成)。
 
 ## CLI 用法
 
@@ -63,19 +65,26 @@ opsctl concern due --within 7d       # 7天内到期的 open 项
 
 ## Hermes Plugin 集成
 
-opsctl 同时是一个 Hermes Plugin，把上述能力暴露为 LLM 可调用工具。
+opsctl 同时是一个 Hermes Plugin（目录插件形态），把上述能力暴露为 LLM 可调用工具。
+插件与 CLI 通过 subprocess 解耦，**CLI 源码随插件仓库一起分发**，`hermes plugins update`
+一条命令即可同时更新插件与 CLI。
 
 ### 启用步骤
 
-1. 安装 opsctl（提供 `hermes_agent.plugins` entry point）。
-2. 编辑 `~/.hermes/config.yaml`：
+1. 从 Git 仓库安装插件（本仓库即插件源，支持任意 Git URL）：
 
-   ```yaml
-   plugins:
-     enabled: [opsctl]
+   ```bash
+   hermes plugins install https://github.com/<your-org>/DevOps-Agent.git
    ```
 
-3. 重启 Hermes，Agent 即可调用以下工具：
+2. 按 `after-install.md` 提示完成一次性依赖安装（Hermes venv 装 `typer rich`）。
+3. 启用插件：
+
+   ```bash
+   hermes plugins enable opsctl-plugin
+   ```
+
+4. 重启 Hermes，Agent 即可调用以下工具：
 
    | 工具 | 用途 |
    |------|------|
@@ -88,7 +97,20 @@ opsctl 同时是一个 Hermes Plugin，把上述能力暴露为 LLM 可调用工
    | `ops_list_concerns` | 列出关注点 |
    | `ops_concerns_due` | 查询即将到期关注点 |
 
-Plugin handler 永远通过 subprocess 调 `opsctl --json`，与 CLI 解耦，CLI 升级不影响 Plugin 契约。
+Plugin handler 永远通过 subprocess 调 `opsctl --json`，与 CLI 解耦。目录插件模式下
+优先调用仓库内 `bin/opsctl_shim.py`（CLI 随插件 git 更新），退回 PATH 中的独立安装 CLI。
+
+### 更新
+
+```bash
+hermes plugins update opsctl-plugin   # 插件 + CLI 一次更新
+```
+
+### 卸载
+
+```bash
+hermes plugins remove opsctl-plugin
+```
 
 ### 定时巡检（Hermes Cron）
 

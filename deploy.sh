@@ -1,126 +1,73 @@
 #!/usr/bin/env bash
-# opsctl Hermes Plugin 一键部署脚本
+# opsctl Hermes 目录插件部署引导脚本
+#
+# 新部署方式: 插件以目录插件形态从 Git 仓库分发 (方案 A′),
+# hermes plugins install/update 一条命令管理插件 + CLI, 无需打包 wheel.
+#
 # 用法:
-#   bash deploy.sh                         # 交互式
-#   bash deploy.sh --local                 # 直接在服务器上安装
-#   bash deploy.sh --soul /path/to/SOUL.md # 指定 SOUL.md 路径
+#   bash deploy.sh              # 打印部署指引
+#   bash deploy.sh --remote user@host   # 在远程服务器上执行部署命令
 
 set -euo pipefail
 
-PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
-WHEEL_DIR="$PROJECT_DIR/dist"
+GIT_URL="https://github.com/<your-org>/DevOps-Agent.git"
 
 info()  { echo "[INFO] $*"; }
 error() { echo "[ERROR] $*" >&2; exit 1; }
 
-# ---- 解析参数 ----
-SOUL_PATH=""
-LOCAL=false
+REMOTE=""
 while [ $# -gt 0 ]; do
     case "$1" in
-        --local) LOCAL=true; shift ;;
-        --soul) SOUL_PATH="$2"; shift 2 ;;
-        --soul=*) SOUL_PATH="${1#*=}"; shift ;;
+        --remote) REMOTE="$2"; shift 2 ;;
+        --remote=*) REMOTE="${1#*=}"; shift ;;
+        -h|--help) sed -n '1,12p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) error "未知参数: $1";;
     esac
 done
 
-# ---- 检测包管理器 ----
-if command -v uv &>/dev/null; then
-    PKG="uv"
-elif command -v pip &>/dev/null; then
-    PKG="pip"
-else
-    error "未找到 pip 或 uv"
-fi
-
-# ---- 本地打包 ----
-info "打包 opsctl wheel..."
-cd "$PROJECT_DIR"
-if [ "$PKG" = "uv" ]; then
-    uv build --wheel 2>&1 | tail -1 || uv pip install build 2>/dev/null && uv build --wheel
-else
-    pip install build 2>/dev/null || true
-    python -m build --wheel
-fi
-WHEEL_FILE=$(find "$WHEEL_DIR" -maxdepth 1 -name 'opsctl-*.whl' | head -1)
-if [ -z "$WHEEL_FILE" ]; then
-    error "打包失败: 未生成 wheel 文件"
-fi
-info "生成: $WHEEL_FILE"
-
-# ---- 远程部署模式 ----
-if [ "$LOCAL" = false ]; then
-    read -rp "Hermes 服务器地址 (user@host, 留空只在本机安装): " REMOTE
-    if [ -n "$REMOTE" ]; then
-        if [ -z "$SOUL_PATH" ]; then
-            read -rp "SOUL.md 路径 (留空则跳过, 如 /home/<user>/.hermes/profiles/operation): " SOUL_PATH
-        fi
-        info "上传到 $REMOTE:~/"
-        UPLOAD_FILES=("$WHEEL_FILE")
-        if [ -n "$SOUL_PATH" ]; then
-            UPLOAD_FILES+=("$PROJECT_DIR/src/opsctl/plugin/contexts/ops-engineer/SOUL.md")
-        fi
-        scp "${UPLOAD_FILES[@]}" "$REMOTE":~/
-        REMOTE_CMD="set -euo pipefail
-# 安装 opsctl
-if command -v uv &>/dev/null; then
-    uv pip install ~/opsctl-*.whl
-else
-    pip install ~/opsctl-*.whl
-fi
-# 启用 Hermes Plugin
-mkdir -p ~/.hermes
-if ! grep -q 'opsctl' ~/.hermes/config.yaml 2>/dev/null; then
-    cat >> ~/.hermes/config.yaml << 'CONFIG'
-plugins:
-  enabled: [opsctl]
-CONFIG
-fi
-"
-        if [ -n "$SOUL_PATH" ]; then
-            REMOTE_CMD="$REMOTE_CMD
-# 安装角色提示词
-mkdir -p \"\$(dirname \"$SOUL_PATH\")\"
-cp ~/SOUL.md \"$SOUL_PATH\"
-echo \"SOUL.md 已安装到: $SOUL_PATH\"
-"
-        fi
-        REMOTE_CMD="$REMOTE_CMD
-# 验证
-echo '=== 验证 ==='
-opsctl resource types
+REMOTE_CMDS="set -euo pipefail
+echo '=== 1/4 安装插件 (克隆到 ~/.hermes/plugins/opsctl-plugin/) ==='
+hermes plugins install $GIT_URL
 echo ''
-echo '✅ 部署完成！重启 Hermes 后 Plugin 生效。'
-echo \"如需启用 Plugin, 请确认 ~/.hermes/config.yaml 包含:
-plugins:
-  enabled: [opsctl]\"
+echo '=== 2/4 一次性安装 CLI 依赖 (Hermes venv) ==='
+echo '请确认 HERMES_VENV 路径后执行:'
+echo '  \$HERMES_VENV/bin/pip install typer rich'
+echo ''
+echo '=== 3/4 启用插件 ==='
+hermes plugins enable opsctl-plugin
+echo ''
+echo '=== 4/4 重启 Hermes ==='
+hermes gateway restart
+echo ''
+echo '✅ 部署完成! 验证: hermes plugins list'
 "
-        ssh "$REMOTE" bash -s -- <<< "$REMOTE_CMD"
-        info "远程部署完成"
-        exit 0
-    fi
-fi
 
-# ---- 本地安装（--local 或无远程）----
-if [ "$PKG" = "uv" ]; then
-    uv pip install "$WHEEL_FILE"
+if [ -n "$REMOTE" ]; then
+    info "在 $REMOTE 上执行部署命令..."
+    ssh "$REMOTE" bash -s -- <<< "$REMOTE_CMDS"
+    info "远程部署完成"
 else
-    pip install "$WHEEL_FILE"
+    cat << 'GUIDE'
+opsctl Hermes 目录插件部署指引
+================================
+
+在 Hermes 服务器上执行以下命令:
+
+  1. 安装插件 (克隆到 ~/.hermes/plugins/opsctl-plugin/)
+     hermes plugins install https://github.com/<your-org>/DevOps-Agent.git
+
+  2. 一次性安装 CLI 依赖 (Hermes venv)
+     $HERMES_VENV/bin/pip install typer rich
+
+  3. 启用插件
+     hermes plugins enable opsctl-plugin
+
+  4. 重启 Hermes
+     hermes gateway restart
+
+更新:  hermes plugins update opsctl-plugin
+卸载:  hermes plugins remove opsctl-plugin
+
+详细说明见 DEPLOY.md。也可用 --remote user@host 在远程服务器上直接执行。
+GUIDE
 fi
-mkdir -p ~/.hermes
-if ! grep -q "opsctl" ~/.hermes/config.yaml 2>/dev/null; then
-    cat >> ~/.hermes/config.yaml << 'CONFIG'
-plugins:
-  enabled: [opsctl]
-CONFIG
-fi
-if [ -n "$SOUL_PATH" ]; then
-    mkdir -p "$(dirname "$SOUL_PATH")"
-    cp "$PROJECT_DIR/src/opsctl/plugin/contexts/ops-engineer/SOUL.md" "$SOUL_PATH"
-    echo "SOUL.md 已安装到: $SOUL_PATH"
-fi
-echo "=== 验证 ==="
-opsctl resource types
-echo ""
-echo "✅ 部署完成！重启 Hermes 后 Plugin 生效。"

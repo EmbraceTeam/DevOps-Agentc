@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "运维资源元数据管理 CLI，可注册为 Hermes Agent 插件"
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "MIT" }
+license = { text = "Apache-2.0" }
 authors = [{ name = "Angle" }]
 dependencies = [
     "typer>=0.12",

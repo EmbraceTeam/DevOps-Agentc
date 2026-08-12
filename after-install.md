@@ -8,7 +8,7 @@
 $HERMES_VENV/bin/pip install typer rich
 ```
 
-> `$HERMES_VENV` 是 Hermes 的虚拟环境路径 (如 `/home/<user>/.hermes/hermes-agent/venv`)。
+> `$HERMES_VENV` 是 Hermes 的虚拟环境路径 (如 `$HOME/.hermes/hermes-agent/venv`)。
 
 ## 2. 启用插件
 

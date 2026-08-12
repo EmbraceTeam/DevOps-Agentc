@@ -5,8 +5,8 @@
 #   hermes plugins update + 逐 profile gateway 重启; 无更新则静默退出.
 # 日志: ~/.hermes/logs/opsctl-update.log
 #
-# crontab 示例 (<user>):
-#   0 8 * * * /home/<user>/.hermes/plugins/opsctl-plugin/bin/opsctl-update.sh
+# crontab 示例 (以实际部署用户为例):
+#   0 8 * * * $HOME/.hermes/plugins/opsctl-plugin/bin/opsctl-update.sh
 
 set -euo pipefail
 

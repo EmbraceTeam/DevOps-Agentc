@@ -18,7 +18,7 @@ opsctl 以 **Hermes 目录插件** 形态分发：本仓库即插件源，`herme
 ### 一键部署（推荐）
 
 ```bash
-bash deploy.sh --remote user@host --profiles "ops eog"
+bash deploy.sh --remote user@host --profiles "ops web"
 ```
 
 脚本自动完成：安装插件（默认 profile）→ 其他 profile 建 symlink → 逐 profile 启用 → 逐 profile 重启。
@@ -41,7 +41,7 @@ hermes plugins enable opsctl-plugin
 hermes gateway restart
 ```
 
-> `$HERMES_VENV` 是 Hermes 的虚拟环境路径（如 `/home/<user>/.hermes/hermes-agent/venv`）。
+> `$HERMES_VENV` 是 Hermes 的虚拟环境路径（如 `$HOME/.hermes/hermes-agent/venv`）。
 > 安装后 Hermes 会渲染 `after-install.md` 提示上述步骤。
 
 ## 多 profile 部署
@@ -57,17 +57,17 @@ profile 的 `plugins/`（默认 profile 为 `~/.hermes/plugins/`，命名 profil
 # 1. 默认 profile 安装
 hermes plugins install https://github.com/<your-org>/DevOps-Agent.git
 
-# 2. 其他 profile 建 symlink (以 ops/eog 为例)
-mkdir -p ~/.hermes/profiles/ops/plugins ~/.hermes/profiles/eog/plugins
+# 2. 其他 profile 建 symlink (以 ops/web 为例)
+mkdir -p ~/.hermes/profiles/ops/plugins ~/.hermes/profiles/web/plugins
 ln -sf ~/.hermes/plugins/opsctl-plugin ~/.hermes/profiles/ops/plugins/opsctl-plugin
-ln -sf ~/.hermes/plugins/opsctl-plugin ~/.hermes/profiles/eog/plugins/opsctl-plugin
+ln -sf ~/.hermes/plugins/opsctl-plugin ~/.hermes/profiles/web/plugins/opsctl-plugin
 
 # 3. 配置技能树 external_dirs (agent 可见 ops-inspect 技能)
 #    插件 register_skill 注册的技能不进 <available_skills> 索引 (Hermes 设计),
 #    需在 config.yaml 的 skills.external_dirs 指向插件 skills 目录:
 #    默认: ~/.hermes/config.yaml
 #    ops:  ~/.hermes/profiles/ops/config.yaml
-#    eog:  ~/.hermes/profiles/eog/config.yaml
+#    web:  ~/.hermes/profiles/web/config.yaml
 #    skills:
 #      external_dirs:
 #        - ~/.hermes/plugins/opsctl-plugin/src/opsctl/plugin/skills
@@ -75,13 +75,13 @@ ln -sf ~/.hermes/plugins/opsctl-plugin ~/.hermes/profiles/eog/plugins/opsctl-plu
 # 4. 逐 profile 启用 + 重启
 hermes plugins enable opsctl-plugin
 hermes --profile ops plugins enable opsctl-plugin
-hermes --profile eog plugins enable opsctl-plugin
+hermes --profile web plugins enable opsctl-plugin
 hermes gateway restart
 hermes --profile ops gateway restart
-hermes --profile eog gateway restart
+hermes --profile web gateway restart
 ```
 
-`bash deploy.sh --profiles "ops eog"` 会自动完成上述全部步骤（含 external_dirs 配置）。
+`bash deploy.sh --profiles "ops web"` 会自动完成上述全部步骤（含 external_dirs 配置）。
 
 各 profile 的数据库仍按 `HERMES_HOME` 自动隔离（见下），互不影响。
 
@@ -155,7 +155,7 @@ opsctl 自动根据 `HERMES_HOME` 环境变量隔离数据库路径：
 | profile | 数据库路径 |
 |---------|-----------|
 | `ops` | `$HERMES_HOME/data/opsctl.db` |
-| `eog` | `$HERMES_HOME/data/opsctl.db` |
+| `web` | `$HERMES_HOME/data/opsctl.db` |
 | 直接 CLI（无 Hermes） | `data/opsctl.db`（CWD 相对路径） |
 
 如需手动指定路径，设置环境变量：

@@ -6,9 +6,9 @@
 #
 # 用法:
 #   bash deploy.sh                                        # 本地执行 (交互询问 profile)
-#   bash deploy.sh --profiles "ops eog"                   # 本地执行, 指定 profile
+#   bash deploy.sh --profiles "ops web"                   # 本地执行, 指定 profile
 #   bash deploy.sh --remote user@host                     # 远程执行 (交互询问 profile)
-#   bash deploy.sh --remote user@host --profiles "ops eog"   # 远程执行, 指定 profile
+#   bash deploy.sh --remote user@host --profiles "ops web"   # 远程执行, 指定 profile
 
 set -euo pipefail
 

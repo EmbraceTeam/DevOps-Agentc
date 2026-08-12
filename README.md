@@ -1,6 +1,8 @@
 # opsctl — 运维资源元数据管理 CLI
 
-为 [Hermes Agent](https://hermes-agent.nousresearch.com/) 提供运维场景缺失的**资源元数据层**：资源清单、凭据、依赖关系、关注点（过期/水位）。让运维 Agent 基于结构化事实做决策，而不是凭对话上下文瞎猜。
+为 [Hermes Agent](https://hermes-agent.nousresearch.com/) 提供运维场景缺失的**资源元数据层**：资源清单、凭据、依赖关系、关注点（过期/水位）。
+
+运维 Agent 没有持久记忆：连接信息靠每次对话传递、凭据散落各处、服务间依赖只存在于上下文里，换一个会话就归零。opsctl 用结构化元数据把"是什么 + 怎么连 + 谁依赖谁 + 何时到期"沉淀下来，让 Agent 基于事实决策，而不是凭对话上下文瞎猜。
 
 ## 设计哲学
 
@@ -10,6 +12,8 @@
 - **关注点配合 Hermes Cron**：证书过期、续费日期等可挂关注点，由 Hermes 定时巡检。
 
 ## 安装
+
+需要 **Python ≥ 3.11**（唯一运行时依赖：typer / rich）。
 
 ```bash
 # 开发模式
@@ -49,12 +53,13 @@ opsctl resource update web1 --attr owner=team-a
 opsctl resource delete web1
 opsctl resource delete web1 --force
 
-# 依赖关系（含环路检测）
-opsctl relation add --source web-app --target pg-main --type depends_on
+# 依赖关系（含环路检测，类型固定 depends_on）
+opsctl relation add --source web1 --target redis-cache
 opsctl relation list
-opsctl relation graph pg-main        # 上下游拓扑
+opsctl relation graph redis-cache        # 上下游拓扑
 
 # 关注点（配合 Hermes Cron）
+# 资源创建时已按类型自动挂默认监控项（如 ECS: CPU/内存/磁盘水位），下面再挂自定义项
 opsctl concern add --resource web1 --category expiry \
   --desc "SSL证书过期" --due 2026-12-31 --severity critical
 opsctl concern list
@@ -89,13 +94,21 @@ opsctl 同时是一个 Hermes Plugin（目录插件形态），把上述能力�
    | 工具 | 用途 |
    |------|------|
    | `ops_list_resources` | 列出资源清单 |
-   | `ops_show_resource` | 查看资源详情（含凭据 + 操作指南） |
-   | `ops_add_resource` | 登记新资源 |
+   | `ops_show_resource` | 查看资源详情（含凭据 + 操作指南，默认脱敏） |
+   | `ops_add_resource` | 登记新资源（含连接凭据） |
+   | `ops_update_resource` | 更新资源字段或属性（覆盖语义） |
+   | `ops_delete_resource` | 删除资源（被引用时拒绝，force 级联） |
    | `ops_list_resource_types` | 列出资源类型 |
    | `ops_add_relation` | 登记依赖（含环路检测） |
+   | `ops_delete_relation` | 删除依赖关系 |
    | `ops_relation_graph` | 查看依赖拓扑 |
    | `ops_list_concerns` | 列出关注点 |
+   | `ops_add_concern` | 添加关注点（到期/水位等） |
+   | `ops_resolve_concern` | 将关注点标记为已解决 |
    | `ops_concerns_due` | 查询即将到期关注点 |
+
+插件场景下数据库按 profile 隔离：数据写入 `$HERMES_HOME/data/opsctl.db`
+（各 profile 数据独立，不落在仓库目录），可用 `OPSCTL_DB` 环境变量强制指定路径。
 
 Plugin handler 永远通过 subprocess 调 `opsctl --json`，与 CLI 解耦。目录插件模式下
 优先调用仓库内 `bin/opsctl_shim.py`（CLI 随插件 git 更新），退回 PATH 中的独立安装 CLI。

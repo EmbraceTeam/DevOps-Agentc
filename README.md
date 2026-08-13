@@ -74,6 +74,34 @@ opsctl 同时是一个 Hermes Plugin（目录插件形态），把上述能力�
 插件与 CLI 通过 subprocess 解耦，**CLI 源码随插件仓库一起分发**，`hermes plugins update`
 一条命令即可同时更新插件与 CLI。
 
+### 一键安装（推荐）
+
+从零到可用一条命令：安装 Hermes Agent → 交互式配置 LLM → 安装并启用本插件 → 验证。
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/EmbraceTeam/DevOps-Agentc/master/install.sh | bash
+```
+
+也可以 clone 仓库后本地执行 `./install.sh`。脚本幂等，重复执行安全；Hermes 已装 / LLM 已配会自动跳过对应阶段。
+
+过程中会提示：
+
+1. 选择 LLM Provider（Anthropic / OpenAI / OpenRouter / Gemini / Ollama / Nous Portal）；
+2. 输入 API Key（静默输入，不回显、不进 shell history）。
+
+常用选项（完整清单见 `./install.sh --help`）：
+
+| 选项 | 作用 |
+|------|------|
+| `--skip-llm` | 跳过 LLM 配置（之后手动 `hermes setup`） |
+| `--provider <name>` | 预选 provider，跳过选择菜单（仍会提示输入 key） |
+| `--skip-hermes` | Hermes 已装时跳过其安装 |
+| `--git-url <url>` | 指定插件源仓库（默认 GitHub 公开仓库） |
+| `--no-restart` | 装完不重启 gateway |
+| `--uninstall` | 卸载插件（保留 Hermes） |
+
+安装完成后新开终端运行 `hermes` 即可对话，Agent 可直接调用下方全部 opsctl 工具。
+
 ### 启用步骤
 
 1. 从 Git 仓库安装插件（本仓库即插件源，支持任意 Git URL）：

@@ -43,6 +43,7 @@ declare -A PROVIDER_ENV=(
     [gemini]="GEMINI_API_KEY"
     [ollama]="OLLAMA_API_KEY"
     [nous]="NOUS_API_KEY"
+    [custom]="OPENAI_API_KEY"
 )
 declare -A PROVIDER_MODEL=(
     [anthropic]="anthropic/claude-sonnet-5"
@@ -51,9 +52,10 @@ declare -A PROVIDER_MODEL=(
     [gemini]="gemini/gemini-3-flash"
     [ollama]="ollama/llama3.2"
     [nous]="nous/hermes-4"
+    [custom]=""
 )
 declare -A PROVIDER_NEEDS_KEY=(
-    [anthropic]=1 [openai]=1 [openrouter]=1 [gemini]=1 [nous]=1
+    [anthropic]=1 [openai]=1 [openrouter]=1 [gemini]=1 [nous]=1 [custom]=1
     [ollama]=0
 )
 
@@ -95,7 +97,7 @@ install.sh — 一键安装 Hermes Agent + opsctl-plugin
   --skip-hermes                跳过 Hermes 安装 (本机已装时用)
   --skip-llm                   跳过 LLM 配置阶段 (之后手动跑 hermes setup)
   --provider <name>            预选 LLM provider, 跳过选择菜单 (仍会提示输入 key)
-                               可选: anthropic, openai, openrouter, gemini, ollama, nous
+                               可选: anthropic, openai, openrouter, gemini, ollama, nous, custom
   --no-restart                 装完不执行 hermes gateway restart
   --uninstall                  卸载插件 (保留 Hermes)
   --hermes-install-args="..."  透传给 Hermes 官方安装器 (如 --skip-browser)
@@ -246,11 +248,58 @@ install_hermes() {
     log_info "执行: $install_cmd"
     # shellcheck disable=SC2086
     if ! bash -c "$install_cmd"; then
-        die "Hermes 官方安装器执行失败。请手动排查后用 --skip-hermes 重试, 或参考 https://hermes-agent.nousresearch.com/docs/getting-started/installation"
+        log_warn "Hermes 官方安装器退出非 0 (常见于可选组件失败, 如 browser/npm)"
+        # 部分成功兜底: 核心 (venv python) 就绪即可继续
+        if resolve_hermes_venv_python >/dev/null 2>&1; then
+            log_warn "但 Hermes 核心已就绪, 继续后续阶段; 可选组件可稍后用官方命令补装"
+        else
+            die "Hermes 核心安装失败。请手动排查后重试, 或参考 https://hermes-agent.nousresearch.com/docs/getting-started/installation"
+        fi
     fi
 
     log_ok "Hermes 安装完成"
     log_info "新装后当前 shell 的 PATH 可能还没刷新, 本脚本会直接用 $HERMES_BIN_DIR 下的入口继续"
+}
+
+# ============================================================================
+# 补建 hermes launcher (官方安装器可选组件失败时可能没走到建 launcher 步骤)
+# ============================================================================
+ensure_hermes_launcher() {
+    resolve_hermes_bin >/dev/null 2>&1 && return 0   # 已有 launcher
+
+    local py
+    py=$(resolve_hermes_venv_python) || {
+        log_warn "找不到 Hermes venv, 无法补建 launcher"
+        return 1
+    }
+    # venv/bin/python → .../hermes-agent (安装目录)
+    local install_dir
+    install_dir=$(dirname "$(dirname "$(dirname "$py")")")
+    local entry="$install_dir/hermes"
+    [[ -f "$entry" ]] || {
+        log_warn "找不到 Hermes 入口脚本: $entry"
+        return 1
+    }
+
+    # 目标位置: 系统 bin (root 可写) → HERMES_BIN_DIR → ~/.local/bin
+    local target=""
+    if [[ -w /usr/local/bin ]]; then
+        target="/usr/local/bin/hermes"
+    elif [[ -d "$HERMES_BIN_DIR" ]]; then
+        target="$HERMES_BIN_DIR/hermes"
+    else
+        mkdir -p "$HOME/.local/bin"
+        target="$HOME/.local/bin/hermes"
+    fi
+
+    cat > "$target" <<EOF
+#!/usr/bin/env bash
+unset PYTHONPATH
+unset PYTHONHOME
+exec "$py" "$entry" "\$@"
+EOF
+    chmod +x "$target"
+    log_ok "已补建 hermes launcher: $target"
 }
 
 # ============================================================================
@@ -312,8 +361,9 @@ configure_llm() {
         printf '  %s4)%s Gemini       (Google, GEMINI_API_KEY)\n' "$C_BLUE" "$C_RESET"
         printf '  %s5)%s Ollama       (本地, 无需 key)\n' "$C_BLUE" "$C_RESET"
         printf '  %s6)%s Nous Portal  (OAuth, 需浏览器登录 — 会跳到 hermes setup)\n' "$C_BLUE" "$C_RESET"
+        printf '  %s7)%s 自定义 OpenAI 兼容端点 (自备 base_url + key + 模型名)\n' "$C_BLUE" "$C_RESET"
         printf '  %s0)%s 跳过 LLM 配置\n' "$C_DIM" "$C_RESET"
-        printf '\n选择 [0-6]: '
+        printf '\n选择 [0-7]: '
         local choice
         read -r choice
         case "$choice" in
@@ -327,6 +377,7 @@ configure_llm() {
                 "$hermes" setup --portal || log_warn "setup --portal 未完成, 之后可重跑"
                 return 0
                 ;;
+            7) provider="custom" ;;
             0)
                 log_warn "跳过 LLM 配置 — 装完后手动跑: hermes setup"
                 return 0
@@ -338,8 +389,29 @@ configure_llm() {
     fi
 
     local env_var="${PROVIDER_ENV[$provider]}"
-    local default_model="${PROVIDER_MODEL[$provider]}"
+    local default_model="${PROVIDER_MODEL[$provider]:-}"
     local needs_key="${PROVIDER_NEEDS_KEY[$provider]:-1}"
+    local custom_base_url=""
+
+    # --- custom (OpenAI 兼容端点): 交互输入 base_url + 模型名 ---
+    if [[ "$provider" == "custom" ]]; then
+        printf '\n%s输入 OpenAI 兼容端点 base_url%s (以 /v1 结尾, 不要带 /chat/completions):\n' "$C_BOLD" "$C_RESET"
+        printf '  %s例如: https://api.example.com/v1%s\n> ' "$C_DIM" "$C_RESET"
+        read -r custom_base_url
+        if [[ -z "$custom_base_url" ]]; then
+            log_warn "未输入 base_url, 跳过 LLM 配置"
+            return 0
+        fi
+        # 用户可能照抄文档给了带 /chat/completions 的完整 URL, 自动剥离
+        custom_base_url="${custom_base_url%/chat/completions}"
+
+        printf '\n%s输入模型名%s (如 deepseek-v4-flash):\n> ' "$C_BOLD" "$C_RESET"
+        read -r default_model
+        if [[ -z "$default_model" ]]; then
+            log_warn "未输入模型名, 跳过 LLM 配置"
+            return 0
+        fi
+    fi
 
     # --- 输入 API Key (ollama 跳过) ---
     local api_key=""
@@ -375,7 +447,20 @@ configure_llm() {
     fi
     log_ok "$env_var 已写入 $env_file (权限 600)"
 
+    # custom (OpenAI 兼容端点) 的凭据在 Hermes 中读 model.api_key (config.yaml),
+    # 不读 .env — 只写 .env 会 401。key 写进 config.yaml 后收紧权限 600。
+    if [[ "$provider" == "custom" ]]; then
+        if "$hermes" config set model.api_key "$api_key" >/dev/null 2>&1; then
+            chmod 600 "$config_file" 2>/dev/null || true
+            log_ok "model.api_key 已写入 $config_file (权限 600)"
+        else
+            log_warn "model.api_key 设置失败, 之后手动配 (hermes config set model.api_key ...)"
+        fi
+    fi
+
     # --- 配置 model.provider + model.default (用 hermes config set, 避免手写 YAML) ---
+    # custom (OpenAI 兼容端点) 在 Hermes 中就是 provider=custom + base_url
+    # (cli-config.yaml.example: "custom" - Any other OpenAI-compatible endpoint)
     log_info "设置 model.provider=$provider, model.default=$default_model"
     if "$hermes" config set model.provider "$provider" >/dev/null 2>&1; then
         "$hermes" config set model.default "$default_model" >/dev/null 2>&1 \
@@ -390,8 +475,14 @@ configure_llm() {
             printf '  default: "%s"\n' "$default_model"
         } >> "$config_file"
     fi
-    # 非 openrouter provider: 清掉安装器预置的 openrouter base_url, 避免请求发错端点
-    if [[ "$provider" != "openrouter" ]]; then
+    # base_url 策略:
+    #   custom    → 设自定义端点
+    #   openrouter → 保留安装器预置的 openrouter base_url
+    #   其它      → 清掉安装器预置的 openrouter base_url, 避免请求发错端点
+    if [[ "$provider" == "custom" ]]; then
+        "$hermes" config set model.base_url "$custom_base_url" >/dev/null 2>&1 \
+            || log_warn "model.base_url 设置失败, 之后手动配"
+    elif [[ "$provider" != "openrouter" ]]; then
         "$hermes" config set model.base_url "" >/dev/null 2>&1 \
             || log_warn "model.base_url 清理失败, 若对话异常请检查 config.yaml"
     fi
@@ -471,9 +562,12 @@ install_plugin() {
     fi
 
     # 确保处于 enabled 状态 (update 不会改 enabled, 重装也保险一下)
+    # --no-allow-tool-override + </dev/null: 避免 tty 下交互提示挂起
+    # (opsctl 不需要 override 内置工具, 拒绝该权限正好)
     if ! grep -q "$PLUGIN_NAME.*enabled" <<< "$list_output"; then
-        log_info "启用插件: $hermes plugins enable $PLUGIN_NAME"
-        "$hermes" plugins enable "$PLUGIN_NAME" || die "插件启用失败"
+        log_info "启用插件: $hermes plugins enable --no-allow-tool-override $PLUGIN_NAME"
+        "$hermes" plugins enable --no-allow-tool-override "$PLUGIN_NAME" < /dev/null \
+            || die "插件启用失败"
     fi
     log_ok "插件 $PLUGIN_NAME 已安装并启用"
 }
@@ -585,6 +679,7 @@ main() {
 
     check_prereqs
     install_hermes
+    ensure_hermes_launcher
     configure_llm
     install_cli_deps
     install_plugin

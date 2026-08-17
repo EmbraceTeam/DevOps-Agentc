@@ -77,6 +77,7 @@ opsctl 同时是一个 Hermes Plugin（目录插件形态），把上述能力�
 ### 一键安装（推荐）
 
 从零到可用一条命令：安装 Hermes Agent → 交互式配置 LLM → 安装并启用本插件 → 验证。
+**完整使用文档见 [docs/install.md](docs/install.md)**（参数一览、自定义 OpenAI 兼容端点、国内镜像加速、FAQ）。
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/EmbraceTeam/DevOps-Agentc/master/install.sh | bash
